@@ -18,11 +18,12 @@ class TOOBot(sc2.BotAI):
         # Do things here before the game starts
 
     async def on_step(self, iteration):
-        await self.distribute_workers()
+        # await self.distribute_workers()
+        
 
         # If we don't have a townhall anymore, send all units to attack
         ccs: Units = self.townhalls
-        if not ccs:
+        if ccs is None:
             print("no ccs!")
             target: Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
             for unit in self.workers | self.units(UnitTypeId.MARINE):
@@ -31,24 +32,20 @@ class TOOBot(sc2.BotAI):
         else:
             cc: Unit = ccs.first
 
-
-        # Build supply depots, two at a time (given the money)
-        # if self.supply_left < 4 and self.supply_used >= 14:
-        #     if self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) < 2:
-        #         print("building depot!")
-        #         await self.build(UnitTypeId.SUPPLYDEPOT, near=cc.position.towards(self.game_info.map_center, 5))
-
         # 14 depot
-        if self.supply_used == 14 and self.can_afford(UnitTypeId.SUPPLYDEPOT):
+        if self.supply_used == 14 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
             await self.build(UnitTypeId.SUPPLYDEPOT, near=cc.position.towards(self.game_info.map_center, 5))
 
-        if self.supply_used == 16 and self.can_afford(UnitTypeId.BARRACKS):
+        # 15 barracks
+        if self.supply_used == 15 and self.can_afford(UnitTypeId.BARRACKS) and self.already_pending(UnitTypeId.BARRACKS) == 0:
             await self.build(UnitTypeId.BARRACKS, near=cc.position.towards(self.game_info.map_center, 5))
 
-        if self.supply_used == 16 and self.can_afford(UnitTypeId.REFINERY) and self.gas_buildings.amount < 1:
-            # All the vespene geysirs nearby, including ones with a refinery on top of it
+        # 16 refinery
+        if self.supply_used == 16 and self.can_afford(UnitTypeId.REFINERY) and self.already_pending(UnitTypeId.REFINERY) == 0:
+            # All the vespene geysers nearby, including ones with a refinery on top of it
             vgs = self.vespene_geyser.closer_than(10, cc)
             for vg in vgs:
+                # check if there is already a refinery on vg
                 if self.gas_buildings.filter(lambda unit: unit.distance_to(vg) < 1):
                     continue
                 # Select a worker closest to the vespene geysir
@@ -62,16 +59,72 @@ class TOOBot(sc2.BotAI):
                 # Only issue one build geysir command per frame
                 break
 
-        if self.supply_used == 19 and self.can_afford(UnitTypeId.ORBITALCOMMAND):
+        # 19 reaper
+        if self.supply_used == 19 and self.can_afford(UnitTypeId.REAPER):
+            barrack = self.structures(UnitTypeId.BARRACKS).idle.random_or(None)
+            if barrack:
+                barrack.train(UnitTypeId.REAPER)
+
+        # 19 orbital command
+        if self.structures(UnitTypeId.BARRACKS).ready and self.can_afford(UnitTypeId.ORBITALCOMMAND):
+            
             cc.build(UnitTypeId.ORBITALCOMMAND)
 
+        # 20 expand
         if self.supply_used == 20 and self.can_afford(UnitTypeId.COMMANDCENTER):
             await self.build(UnitTypeId.COMMANDCENTER, near=cc.position.towards(self.game_info.map_center, 5))
 
+        # 20 second barracks
 
-        # Train 60 scvs
-        elif self.can_afford(UnitTypeId.SCV) and self.supply_workers < 60 and cc.is_idle:
-            print("training scv!")
+        # 21 barracks reactor
+
+        # 22 depot
+
+        # 22 refinery
+
+        # 23 factory
+
+        # produce marines until 16
+
+        # 26 barracks tech lab
+
+        # 27 orbital on expo
+
+        # 28 stim
+
+        # 32 starport
+
+        # 32 factory reactor
+
+        # 37 depot
+
+        # 40 depot
+
+        # 45 double medivac
+
+        # 53 depot
+        
+
+        for a in self.gas_buildings:
+            if a.assigned_harvesters < a.ideal_harvesters:
+                w = self.workers.closer_than(20, a)
+                if w:
+                    w.random.gather(a)
+
+        for scv in self.workers.idle:
+            scv.gather(self.mineral_field.closest_to(cc))
+
+        await self.train_workers()
+        
+
+    async def train_workers(self):
+        # a random idle cc, or None if no idle cc's
+        cc = self.townhalls.idle.random_or(None)
+        if (
+            cc and
+            self.can_afford(UnitTypeId.SCV) and
+            self.supply_workers < self.townhalls.amount * 22
+        ):
             cc.train(UnitTypeId.SCV)
 
     def on_end(self, result):
