@@ -7,9 +7,19 @@ from sc2.units import Units
 from sc2.position import Point2
 from sc2.ids.unit_typeid import UnitTypeId
 
-
 class TOOBot(sc2.BotAI):
+    NAME: str = "211-bot"
+    """This bot's name"""
+    RACE: Race = Race.Terran
+    """This bot's Starcraft 2 race"""
+
+    async def on_start(self):
+        print("Game started")
+        # Do things here before the game starts
+
     async def on_step(self, iteration):
+        await self.distribute_workers()
+
         # If we don't have a townhall anymore, send all units to attack
         ccs: Units = self.townhalls
         if not ccs:
@@ -20,7 +30,6 @@ class TOOBot(sc2.BotAI):
             return
         else:
             cc: Unit = ccs.first
-
 
 
         # Build supply depots, two at a time (given the money)
@@ -65,18 +74,6 @@ class TOOBot(sc2.BotAI):
             print("training scv!")
             cc.train(UnitTypeId.SCV)
 
-        # Idle workers should mine
-        for scv in self.workers.idle:
-            scv.gather(self.mineral_field.closest_to(cc))
-
-
-def main():
-    run_game(
-        maps.get("AbyssalReefLE"),
-        [Bot(Race.Terran, TOOBot()), Computer(Race.Zerg, Difficulty.Easy)],
-        realtime=False,
-    )
-
-
-if __name__ == "__main__":
-    main()
+    def on_end(self, result):
+        print("Game ended.")
+        # Do things here after the game ends
