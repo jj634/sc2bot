@@ -98,6 +98,9 @@ class TOOBot(sc2.BotAI):
                 # TODO: check if addon location is valid
                 barrack.build(UnitTypeId.BARRACKSREACTOR)
 
+        if (self.supply_used >= 20):
+            await self.train_workers()
+
         # 22 depot
         if self.supply_used == 22 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
@@ -138,7 +141,7 @@ class TOOBot(sc2.BotAI):
         if self.supply_used > 23 and self.structures(UnitTypeId.BARRACKS).ready:
             # expo = self.townhalls.filter(lambda t : t.type_id == UnitTypeId.COMMANDCENTER).random
             for expo in self.townhalls.ready:
-                if expo.type_id == UnitTypeId.COMMANDCENTER and not expo.is_transforming:
+                if expo.type_id == UnitTypeId.COMMANDCENTER and not expo.is_transforming and self.already_pending(UnitTypeId.ORBITALCOMMAND) == 0:
                     expo.build(UnitTypeId.ORBITALCOMMAND)
 
         # 28 stim
@@ -149,7 +152,7 @@ class TOOBot(sc2.BotAI):
                 techlab.research(UpgradeId.STIMPACK)
 
         # 32 starport
-        if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT):
+        if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT) and not self.structures(UnitTypeId.STARPORTFLYING):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
                 print("building starport")
                 pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 5), addon_place = True)
@@ -175,17 +178,35 @@ class TOOBot(sc2.BotAI):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
+        star : Unit = self.structures(UnitTypeId.STARPORT).ready.random_or(None)
+        fac : Unit = self.structures(UnitTypeId.FACTORY).ready.random_or(None)
+        starflying : Unit = self.structures(UnitTypeId.STARPORTFLYING).random_or(None)
+        facflying : Unit = self.structures(UnitTypeId.FACTORYFLYING).random_or(None)
+        if star and not star.has_reactor:
+            print("1")
+            star(AbilityId.LIFT)
+        elif fac and fac.has_reactor and starflying:
+            print("2")
+            fac(AbilityId.LIFT)
+        elif starflying and facflying and not starflying.is_moving:
+            print("3")
+            starflying(AbilityId.LAND,facflying.position)
+        elif facflying and not facflying.is_moving:
+            print("4")
+            facflying(AbilityId.LAND,self.start_location.towards(leftright, 5))
+        
+
 
         # 45 double medivac
+        if self.structures(UnitTypeId.STARPORT).ready and self.units(UnitTypeId.MEDIVAC).amount < 2:
+            starport = self.structures(UnitTypeId.STARPORT).ready.random_or(None)
+            if starport:
+                starport.train(UnitTypeId.MEDIVAC)
 
         # 53 depot
         if self.supply_used == 53 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
-        
-        if (self.supply_used >= 20):
-            await self.train_workers()
-
-        # drop mules
+                # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
             # TODO: include mineral fields close to any cc
             mfs: Units = self.mineral_field.closer_than(10, oc)
@@ -203,6 +224,8 @@ class TOOBot(sc2.BotAI):
         for scv in self.workers.idle:
             # TODO: set rally, distribute workers to expo
             scv.gather(self.mineral_field.closest_to(cc))
+
+
 
 
     async def train_workers(self):
