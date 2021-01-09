@@ -6,6 +6,7 @@ from sc2.units import Units
 from sc2.position import Point2
 from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.upgrade_id import UpgradeId
+from sc2.ids.ability_id import AbilityId
 
 
 class TOOBot(sc2.BotAI):
@@ -70,7 +71,6 @@ class TOOBot(sc2.BotAI):
                 break
 
         # 19 orbital command
-        # TODO: drop mules upon completion
         if self.supply_used == 19 and self.can_afford(UnitTypeId.ORBITALCOMMAND):
             if self.structures(UnitTypeId.BARRACKS).ready:
                 cc.build(UnitTypeId.ORBITALCOMMAND)
@@ -185,6 +185,15 @@ class TOOBot(sc2.BotAI):
 
         if (self.supply_used >= 20):
             await self.train_workers()
+
+        # drop mules
+        for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
+            # TODO: include mineral fields close to any cc
+            mfs: Units = self.mineral_field.closer_than(10, oc)
+            if mfs:
+                mf: Unit = max(mfs, key=lambda x: x.mineral_contents)
+                oc(AbilityId.CALLDOWNMULE_CALLDOWNMULE, mf)
+
         # TODO: improve this, see why distribute_workers doesn't work
         # await self.distribute_workers()
         for a in self.gas_buildings:
