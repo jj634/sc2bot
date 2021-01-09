@@ -131,8 +131,9 @@ class TOOBot(sc2.BotAI):
         # produce marines until 16
         if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount < 16:
             for barrack in self.structures(UnitTypeId.BARRACKS).ready:
-                if barrack.has_add_on and len(barrack.orders) < 2:
-                    barrack.train(UnitTypeId.MARINE)
+                if barrack.has_add_on:
+                    if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
+                        barrack.train(UnitTypeId.MARINE)
 
         # 27 orbital on expo
         if self.supply_used > 23 and self.structures(UnitTypeId.BARRACKS).ready:
@@ -153,15 +154,17 @@ class TOOBot(sc2.BotAI):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
                 print("building starport")
                 pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=cc.position.towards(leftright, 15), addon_place = True)
+                print("??")
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
 
         # 32 factory reactor
-        if self.already_pending(UnitTypeId.FACTORYREACTOR) == 0 and len(self.reactor_tags) < 2:
-            factory = self.structures(UnitTypeId.FACTORY).idle.random_or(None)
-            if factory:
-                # TODO: check if addon location is valid
-                factory.build(UnitTypeId.FACTORYREACTOR)
+        if self.already_pending(UnitTypeId.STARPORT) != 0:
+            if self.already_pending(UnitTypeId.FACTORYREACTOR) == 0 and len(self.reactor_tags) < 2:
+                factory = self.structures(UnitTypeId.FACTORY).idle.random_or(None)
+                if factory:
+                    # TODO: check if addon location is valid
+                    factory.build(UnitTypeId.FACTORYREACTOR)
 
         # 37 depot
         if self.supply_used == 37 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
