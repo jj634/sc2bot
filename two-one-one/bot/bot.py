@@ -26,7 +26,7 @@ class TOOBot(sc2.BotAI):
         leftright : Point2 = Point2((self.game_info.map_center.x, self.game_info.player_start_location.y))
 
         # If we don't have a townhall anymore, send all units to attack
-        ccs: Units = self.townhalls
+        ccs: Units = self.townhalls.ready
         if ccs is None:
             print("no ccs!")
             target: Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
@@ -83,13 +83,12 @@ class TOOBot(sc2.BotAI):
 
         # 20 expand
         if self.supply_used == 20 and self.can_afford(UnitTypeId.COMMANDCENTER):
-            # TODO: place at correct position
-            await self.build(UnitTypeId.COMMANDCENTER, near=cc.position.towards(self.game_info.map_center, 5))
+            await self.expand_now()
 
         # 20 second barracks
         if self.already_pending(UnitTypeId.COMMANDCENTER) != 0:
             if self.supply_used == 20 and self.can_afford(UnitTypeId.BARRACKS) and self.already_pending(UnitTypeId.BARRACKS) == 0:
-                pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=cc.position.towards(self.game_info.map_center, 15), addon_place = True)
+                pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
                 await self.build(UnitTypeId.BARRACKS, near=pos)
 
         # 21 barracks reactor
@@ -101,7 +100,7 @@ class TOOBot(sc2.BotAI):
 
         # 22 depot
         if self.supply_used == 22 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
-            await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+            await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 22 refinery
         if self.already_pending(UnitTypeId.SUPPLYDEPOT) != 0:
@@ -117,7 +116,7 @@ class TOOBot(sc2.BotAI):
         # 23 factory
         if self.supply_used == 23 and self.can_afford(UnitTypeId.FACTORY) and self.already_pending(UnitTypeId.FACTORY) == 0:
             if self.tech_requirement_progress(UnitTypeId.FACTORY) == 1:
-                pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=cc.position.towards(leftright, 15), addon_place = True)
+                pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
                 await self.build(UnitTypeId.FACTORY, near=pos)
 
         # 26 barracks tech lab
@@ -153,10 +152,11 @@ class TOOBot(sc2.BotAI):
         if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
                 print("building starport")
-                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=cc.position.towards(leftright, 15), addon_place = True)
+                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 5), addon_place = True)
                 print("??")
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
+                print("built")
 
         # 32 factory reactor
         if self.already_pending(UnitTypeId.STARPORT) != 0:
@@ -168,11 +168,11 @@ class TOOBot(sc2.BotAI):
 
         # 37 depot
         if self.supply_used == 37 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
-            await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+            await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 40 depot
         if self.supply_used == 40 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
-            await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+            await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
 
@@ -182,7 +182,6 @@ class TOOBot(sc2.BotAI):
         if self.supply_used == 53 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
         
-
         if (self.supply_used >= 20):
             await self.train_workers()
 
@@ -202,10 +201,9 @@ class TOOBot(sc2.BotAI):
                 if w:
                     w.random.gather(a)
         for scv in self.workers.idle:
+            # TODO: set rally, distribute workers to expo
             scv.gather(self.mineral_field.closest_to(cc))
 
-
-        
 
     async def train_workers(self):
         """
