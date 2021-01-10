@@ -131,6 +131,7 @@ class TOOBot(sc2.BotAI):
                     barrack.build(UnitTypeId.BARRACKSTECHLAB)                
 
         # produce marines until 16
+        # TODO: when loaded in medivacs, the number of marines decreases
         if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount + self.already_pending(UnitTypeId.MARINE) < 16:
             for barrack in self.structures(UnitTypeId.BARRACKS).ready:
                 if barrack.has_add_on:
@@ -154,12 +155,9 @@ class TOOBot(sc2.BotAI):
         # 32 starport
         if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT) and not self.structures(UnitTypeId.STARPORTFLYING):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
-                print("building starport")
                 pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 5), addon_place = True)
-                print("??")
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
-                print("built")
 
         # 32 factory reactor
         if self.already_pending(UnitTypeId.STARPORT) != 0:
@@ -170,11 +168,11 @@ class TOOBot(sc2.BotAI):
                     factory.build(UnitTypeId.FACTORYREACTOR)
 
         # 37 depot
-        if self.supply_used == 37 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+        if len(self.reactor_tags) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 2:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 40 depot
-        if self.supply_used == 40 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+        if self.structures(UnitTypeId.SUPPLYDEPOT).amount == 3 and self.can_afford(UnitTypeId.SUPPLYDEPOT):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
@@ -199,8 +197,6 @@ class TOOBot(sc2.BotAI):
             print(starflying.is_moving)
             pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5))
             facflying(AbilityId.LAND,pos)
-        
-
 
         # 45 double medivac
         if star and star.has_reactor and self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) < 2:
@@ -209,7 +205,7 @@ class TOOBot(sc2.BotAI):
                 starport.train(UnitTypeId.MEDIVAC)
 
         # 53 depot
-        if self.supply_used == 53 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+        if self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 4:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
 
         # drop mules
