@@ -131,7 +131,7 @@ class TOOBot(sc2.BotAI):
                     barrack.build(UnitTypeId.BARRACKSTECHLAB)                
 
         # produce marines until 16
-        if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount < 16:
+        if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount + self.already_pending(UnitTypeId.MARINE) < 16:
             for barrack in self.structures(UnitTypeId.BARRACKS).ready:
                 if barrack.has_add_on:
                     if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
@@ -188,17 +188,22 @@ class TOOBot(sc2.BotAI):
         elif fac and fac.has_reactor and starflying:
             print("2")
             fac(AbilityId.LIFT)
-        elif starflying and facflying and not starflying.is_moving:
+        elif starflying and facflying and starflying.is_idle:
             print("3")
+            print(starflying.is_idle)
+            print(starflying.is_moving)
             starflying(AbilityId.LAND,facflying.position)
-        elif facflying and not facflying.is_moving:
+        elif facflying and facflying.is_idle:
             print("4")
-            facflying(AbilityId.LAND,self.start_location.towards(leftright, 5))
+            print(starflying.is_idle)
+            print(starflying.is_moving)
+            pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5))
+            facflying(AbilityId.LAND,pos)
         
 
 
         # 45 double medivac
-        if self.structures(UnitTypeId.STARPORT).ready and self.units(UnitTypeId.MEDIVAC).amount < 2:
+        if star and star.has_reactor and self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) < 2:
             starport = self.structures(UnitTypeId.STARPORT).ready.random_or(None)
             if starport:
                 starport.train(UnitTypeId.MEDIVAC)
@@ -206,7 +211,8 @@ class TOOBot(sc2.BotAI):
         # 53 depot
         if self.supply_used == 53 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
-                # drop mules
+
+        # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
             # TODO: include mineral fields close to any cc
             mfs: Units = self.mineral_field.closer_than(10, oc)
@@ -233,11 +239,11 @@ class TOOBot(sc2.BotAI):
         Continuously trains workers until every base has 22 workers.
         """
         # a random idle cc, or None if no idle cc's
-        cc = self.townhalls.idle.random_or(None)
+        cc = self.townhalls(UnitTypeId.ORBITALCOMMAND).idle.random_or(None)
         if (
             cc and
             self.can_afford(UnitTypeId.SCV) and
-            self.supply_workers < self.townhalls.amount * 22
+            self.supply_workers + self.already_pending(UnitTypeId.SCV) < self.townhalls.amount * 22
         ):
             cc.train(UnitTypeId.SCV)
 
