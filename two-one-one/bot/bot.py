@@ -7,6 +7,7 @@ from sc2.position import Point2
 from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.upgrade_id import UpgradeId
 from sc2.ids.ability_id import AbilityId
+from sc2.ids.buff_id import BuffId
 
 
 class TOOBot(sc2.BotAI):
@@ -155,7 +156,7 @@ class TOOBot(sc2.BotAI):
         # 32 starport
         if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT) and not self.structures(UnitTypeId.STARPORTFLYING):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
-                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 5), addon_place = True)
+                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 8.5), addon_place = True)
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
 
@@ -230,26 +231,32 @@ class TOOBot(sc2.BotAI):
          - When a marine falls below 20 hp, pick it up and drop it immediately ?
          - When a marine falls below 10 hp, pick it up and keep it
         """
-        MEDIVAC_RANGE = 5
-        MARINE_HP_THRESHOLD = 10
+        # MEDIVAC_RANGE = 5
+        MARINE_BOOST_THRESHOLD = 30
+        MARINE_PICKUP_THRESHOLD = 15
 
         marines = self.units(UnitTypeId.MARINE)
         medivacs = self.units(UnitTypeId.MEDIVAC)
-        if marines.amount >= 16 and medivacs.amount >= 2:
-            for marine in marines:
-                marine.attack(self.enemy_start_locations[0])
-            for medivac in medivacs:
-                medivac.attack(marines.sorted(key = lambda m: m.health).first)
 
         for marine in marines:
-            enemies_in_range = self.enemy_units.filter(lambda e : marine.ground_range >= marine.distance_to(e))
-            if enemies_in_range and not marine.is_using_ability(AbilityId.EFFECT_STIM_MARINE):
+            enemies_in_range = self.enemy_units.filter(lambda e : marine.ground_range >= marine.distance_to(e) + 1)
+            if marines.amount >= 16 and medivacs.amount >= 2:
+                marine.attack(self.enemy_start_locations[0])
+            if enemies_in_range and not marine.has_buff(BuffId.STIMPACK):
                 marine(AbilityId.EFFECT_STIM_MARINE)
-        for medivac in medivacs:
-            low_marines = self.units(UnitTypeId.MARINE).filter(lambda m : m.health <= MARINE_HP_THRESHOLD and medivac.distance_to(m) <= MEDIVAC_RANGE)
-            if low_marines:
-                # medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                medivac(AbilityId.LOAD_MEDIVAC,low_marines.first)
+        if marines:
+            sorted_marines = marines.sorted(key = lambda m : m.health)
+            for medivac in medivacs:        
+                lowest_marine = sorted_marines.first
+                medivac.attack(lowest_marine.position)
+
+                if lowest_marine.health <= MARINE_BOOST_THRESHOLD and lowest_marine.health > MARINE_PICKUP_THRESHOLD:
+                    if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                        medivac.move(lowest_marine.position)
+                    else:
+                        medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                elif lowest_marine.health <= MARINE_PICKUP_THRESHOLD:
+                    medivac(AbilityId.LOAD_MEDIVAC,lowest_marine)
 
 
 
