@@ -185,6 +185,8 @@ class TOOBot(sc2.BotAI):
             star(AbilityId.LIFT)
         elif fac and fac.has_reactor and starflying:
             fac(AbilityId.LIFT)
+        elif starflying and fac and starflying.is_idle:
+            starflying.move(fac.position)
         elif starflying and facflying and starflying.is_idle:
             starflying(AbilityId.LAND,facflying.position)
         elif facflying and facflying.is_idle:
