@@ -156,7 +156,7 @@ class TOOBot(sc2.BotAI):
         # 32 starport
         if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT) and not self.structures(UnitTypeId.STARPORTFLYING):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
-                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 8.5), addon_place = True)
+                pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 10), addon_place = True)
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
 
