@@ -181,20 +181,12 @@ class TOOBot(sc2.BotAI):
         starflying : Unit = self.structures(UnitTypeId.STARPORTFLYING).random_or(None)
         facflying : Unit = self.structures(UnitTypeId.FACTORYFLYING).random_or(None)
         if star and not star.has_reactor:
-            print("1")
             star(AbilityId.LIFT)
         elif fac and fac.has_reactor and starflying:
-            print("2")
             fac(AbilityId.LIFT)
         elif starflying and facflying and starflying.is_idle:
-            print("3")
-            print(starflying.is_idle)
-            print(starflying.is_moving)
             starflying(AbilityId.LAND,facflying.position)
         elif facflying and facflying.is_idle:
-            print("4")
-            print(starflying.is_idle)
-            print(starflying.is_moving)
             pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5))
             facflying(AbilityId.LAND,pos)
 
@@ -207,6 +199,8 @@ class TOOBot(sc2.BotAI):
         # 53 depot
         if self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 4:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+
+        await self.attack()
 
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
@@ -227,6 +221,35 @@ class TOOBot(sc2.BotAI):
             # TODO: set rally, distribute workers to expo
             scv.gather(self.mineral_field.closest_to(cc))
 
+    async def attack(self):
+        """
+        Send marines to attack once there are 16 marines and 2 medivacs.
+         - Marines a move to enemy main
+         - Medivacs follow marines
+         - Stim when in range of an enemy unit
+         - When a marine falls below 20 hp, pick it up and drop it immediately ?
+         - When a marine falls below 10 hp, pick it up and keep it
+        """
+        MEDIVAC_RANGE = 5
+        MARINE_HP_THRESHOLD = 10
+
+        marines = self.units(UnitTypeId.MARINE)
+        medivacs = self.units(UnitTypeId.MEDIVAC)
+        if marines.amount >= 16 and medivacs.amount >= 2:
+            for marine in marines:
+                marine.attack(self.enemy_start_locations[0])
+            for medivac in medivacs:
+                medivac.attack(marines.sorted(key = lambda m: m.health).first)
+
+        for marine in marines:
+            enemies_in_range = self.enemy_units.filter(lambda e : marine.ground_range >= marine.distance_to(e))
+            if enemies_in_range and not marine.is_using_ability(AbilityId.EFFECT_STIM_MARINE):
+                marine(AbilityId.EFFECT_STIM_MARINE)
+        for medivac in medivacs:
+            low_marines = self.units(UnitTypeId.MARINE).filter(lambda m : m.health <= MARINE_HP_THRESHOLD and medivac.distance_to(m) <= MEDIVAC_RANGE)
+            if low_marines:
+                # medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                medivac(AbilityId.LOAD_MEDIVAC,low_marines.first)
 
 
 
