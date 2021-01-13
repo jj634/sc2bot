@@ -240,26 +240,36 @@ class TOOBot(sc2.BotAI):
         marines = self.units(UnitTypeId.MARINE)
         medivacs = self.units(UnitTypeId.MEDIVAC)
 
+        endangered_marines = set()
+
         for marine in marines:
-            enemies_in_range = self.enemy_units.filter(lambda e : marine.ground_range >= marine.distance_to(e) + 1)
+            enemies_in_range = self.enemy_units.filter(lambda e : e.target_in_range(marine))
+            if enemies_in_range:
+                endangered_marines.add(marine.tag)
             if marines.amount >= 16 and medivacs.amount >= 2:
                 marine.attack(self.enemy_start_locations[0])
             if enemies_in_range and not marine.has_buff(BuffId.STIMPACK):
                 marine(AbilityId.EFFECT_STIM_MARINE)
         if marines:
             sorted_marines = marines.sorted(key = lambda m : m.health)
-            for medivac in medivacs:        
-                lowest_marine = sorted_marines.first
-                medivac.attack(lowest_marine.position)
+            
+            for medivac in medivacs:
+                medivac.attack(sorted_marines.first.position)
 
-                if lowest_marine.health <= MARINE_BOOST_THRESHOLD and lowest_marine.health > MARINE_PICKUP_THRESHOLD:
-                    if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
-                        medivac.move(lowest_marine.position)
-                    else:
-                        medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                elif lowest_marine.health <= MARINE_PICKUP_THRESHOLD:
-                    medivac(AbilityId.LOAD_MEDIVAC,lowest_marine)
-
+                endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines)
+                enemies_in_range = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV).filter(lambda e : e.target_in_range(medivac))
+                # pickup marines in enemy range
+                if endangered_marines:
+                    lowest_endangered_marine = endangered_marines.first
+                    if lowest_endangered_marine.health <= MARINE_BOOST_THRESHOLD and lowest_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
+                        if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                            medivac.move(lowest_endangered_marine.position)
+                        else:
+                            medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                    elif lowest_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
+                        medivac(AbilityId.LOAD_MEDIVAC,lowest_endangered_marine)
+                if not enemies_in_range:
+                    medivac(AbilityId.UNLOADALLAT_MEDIVAC)
 
 
     async def train_workers(self):
