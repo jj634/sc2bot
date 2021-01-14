@@ -92,41 +92,39 @@ class MedivacPickup(sc2.BotAI):
                 marine.attack(self.enemy_start_locations[0])
             if enemies_in_range and not marine.has_buff(BuffId.STIMPACK):
                 marine(AbilityId.EFFECT_STIM_MARINE)
-        if marines:
-            sorted_marines = marines.sorted(key = lambda m : m.health)
-            sorted_marines_iter = iter(sorted_marines)
 
-            endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines_tags)
-            endangered_marines_iter = iter(endangered_marines)
+        sorted_marines = marines.sorted(key = lambda m : m.health)
+        sorted_marines_iter = iter(sorted_marines)
+
+        endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines_tags)
+        endangered_marines_iter = iter(endangered_marines)
             
-            for medivac in medivacs:
-                if medivac.has_cargo:
-                    # drop off at closest safe position
-                    medivac_endangered = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(medivac))
-                    if medivac_endangered:
-                        print("in danger!")
-                        medivac.move(self.start_location)
-                    else:
-                        print("safe!")
-                        medivac(AbilityId.UNLOADALLAT_MEDIVAC)
+        for medivac in medivacs:
+            if medivac.has_cargo:
+                # drop off at closest safe position
+                medivac_endangered = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(medivac))
+                if medivac_endangered:
+                    medivac.move(self.start_location)
                 else:
-                    next_endangered_marine = next(endangered_marines_iter, None)
-                    if next_endangered_marine:
-                        if next_endangered_marine.health <= MARINE_BOOST_THRESHOLD and next_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
-                            if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
-                                medivac(AbilityId.MEDIVACHEAL_HEAL, next_endangered_marine)
-                            else:
-                                medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                        elif next_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
-                            # move and load
-                            if medivac.position.is_same_as(next_endangered_marine.position):
-                                medivac(AbilityId.LOAD_MEDIVAC,next_endangered_marine)
-                            else:
-                                medivac.move(next_endangered_marine.position)
-                    else:
-                        next_marine = next(sorted_marines_iter, sorted_marines.first)
-                        if next_marine:
-                            medivac.attack(next_marine.position)            
+                    medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
+            elif not (len(medivac.orders) > 0 and medivac.orders[0].ability.id == AbilityId.LOAD_MEDIVAC):
+                next_endangered_marine = next(endangered_marines_iter, None)
+                if next_endangered_marine:
+                    if next_endangered_marine.health <= MARINE_BOOST_THRESHOLD and next_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
+                        if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                            medivac(AbilityId.MEDIVACHEAL_HEAL, next_endangered_marine)
+                        else:
+                            medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                    elif next_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
+                        # move and load
+                        medivac(AbilityId.LOAD_MEDIVAC,next_endangered_marine)
+                elif marines:
+                    next_marine = next(sorted_marines_iter, sorted_marines.random_or(None))
+                    if next_marine:
+                        medivac.attack(next_marine.position)
+                else:
+                    # no marines
+                    medivac.move(self.start_location)
 
 
 def main():
