@@ -5,6 +5,15 @@ from sc2.data import Result
 from sc2.player import Bot, Computer
 from sc2.unit import Unit
 from sc2.units import Units
+from sc2.ids.unit_typeid import UnitTypeId
+from sc2.ids.upgrade_id import UpgradeId
+from sc2.ids.ability_id import AbilityId
+from sc2.ids.buff_id import BuffId
+
+import sys
+sys.path.append(".") # Adds higher directory to python modules path.
+
+from base_bots.stimpack import StimBot
 
 """
 This bot tests medivac pickup micro.
@@ -15,13 +24,37 @@ class MedivacPickup(sc2.BotAI):
     async def on_start(self):
         await self.client.debug_create_unit(
             [
-                [UnitTypeId.MEDIVAC, 2, self.start_location.towards(self.game_info.map_center, 5), 1],
-                [UnitTypeId.MARINE, 16, self.start_location.towards(self.game_info.map_center, 5), 1],
+                [UnitTypeId.MEDIVAC, 2, self.start_location.towards(self.game_info.map_center, 40), 1],
+                [UnitTypeId.MARINE, 16, self.start_location.towards(self.game_info.map_center, 40), 1],
+                [UnitTypeId.MEDIVAC, 2, self.game_info.map_center, 2],
+                [UnitTypeId.MARINE, 16, self.game_info.map_center, 2],
             ]
         )
+        await self.client.debug_control_enemy()
+        await self.client.debug_fast_build()
+        # await self.client.debug_tech_tree()
+        await self.client.debug_all_resources()
 
     async def on_step(self, iteration):
-        await self.attack()
+        if iteration > 5:
+            depot = self.structures(UnitTypeId.SUPPLYDEPOT)
+            if not depot and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+                await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(self.game_info.map_center, 5))
+
+            if depot and self.already_pending(UnitTypeId.BARRACKS) == 0 and self.structures(UnitTypeId.BARRACKS).amount == 0:
+                pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 5), addon_place = True)
+                await self.build(UnitTypeId.BARRACKS, near=pos)
+
+            for barrack in self.structures(UnitTypeId.BARRACKS).filter(lambda b : not b.has_add_on).ready:
+                barrack.build(UnitTypeId.BARRACKSTECHLAB)
+
+            techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
+            if techlab_rax and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0:
+                techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
+                techlab.research(UpgradeId.STIMPACK)
+
+            if self.already_pending_upgrade(UpgradeId.STIMPACK) > 0:
+                await self.attack()
 
     async def attack(self):
         """
@@ -74,7 +107,7 @@ class MedivacPickup(sc2.BotAI):
 def main():
     sc2.run_game(
         sc2.maps.get("AcropolisLE"),
-        [Bot(Race.Terran, MedivacPickup()), Computer(Race.Terran, Difficulty.Medium)],
+        [Bot(Race.Terran, MedivacPickup()), Bot(Race.Terran, StimBot())],
         realtime=True,
         disable_fog=True,
     )
