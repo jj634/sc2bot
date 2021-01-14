@@ -10,6 +10,7 @@ from sc2.ids.upgrade_id import UpgradeId
 from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
+# TODO: figure out relative imports
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
@@ -32,23 +33,32 @@ class MedivacPickup(sc2.BotAI):
         )
         await self.client.debug_control_enemy()
         await self.client.debug_fast_build()
-        # await self.client.debug_tech_tree()
         await self.client.debug_all_resources()
 
     async def on_step(self, iteration):
-        if iteration > 5:
-            depot = self.structures(UnitTypeId.SUPPLYDEPOT)
-            if not depot and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
-                await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(self.game_info.map_center, 5))
+        if iteration == 1:
+            raxpos_1 : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 5), addon_place = True)
+            raxpos_2 : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.enemy_start_locations[0].towards(self.game_info.map_center, 5), addon_place = True)
+            await self.client.debug_create_unit(
+                [
+                    [UnitTypeId.BARRACKS, 1, raxpos_1, 1],
+                    [UnitTypeId.BARRACKS, 1, raxpos_2, 2],
+                ]
+            )
 
-            if depot and self.already_pending(UnitTypeId.BARRACKS) == 0 and self.structures(UnitTypeId.BARRACKS).amount == 0:
+        if iteration > 1:
+            depot = self.structures(UnitTypeId.SUPPLYDEPOT)
+            barracks = self.structures(UnitTypeId.BARRACKS)
+            if not barracks and not depot and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+                await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(self.game_info.map_center, 5))
+            if depot and self.already_pending(UnitTypeId.BARRACKS) == 0 and not barracks:
                 pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 5), addon_place = True)
                 await self.build(UnitTypeId.BARRACKS, near=pos)
 
-            for barrack in self.structures(UnitTypeId.BARRACKS).filter(lambda b : not b.has_add_on).ready:
+            for barrack in barracks.ready.filter(lambda b : not b.has_add_on):
                 barrack.build(UnitTypeId.BARRACKSTECHLAB)
 
-            techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
+            techlab_rax = barracks.ready.filter(lambda b : b.has_techlab).random_or(None)
             if techlab_rax and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0:
                 techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
                 techlab.research(UpgradeId.STIMPACK)
@@ -72,36 +82,51 @@ class MedivacPickup(sc2.BotAI):
         marines = self.units(UnitTypeId.MARINE)
         medivacs = self.units(UnitTypeId.MEDIVAC)
 
-        endangered_marines = set()
+        endangered_marines_tags = set()
 
         for marine in marines:
             enemies_in_range = self.enemy_units.filter(lambda e : e.target_in_range(marine))
             if enemies_in_range:
-                endangered_marines.add(marine.tag)
+                endangered_marines_tags.add(marine.tag)
             if marines.amount >= 16 and medivacs.amount >= 2:
                 marine.attack(self.enemy_start_locations[0])
             if enemies_in_range and not marine.has_buff(BuffId.STIMPACK):
                 marine(AbilityId.EFFECT_STIM_MARINE)
         if marines:
             sorted_marines = marines.sorted(key = lambda m : m.health)
+            sorted_marines_iter = iter(sorted_marines)
+
+            endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines_tags)
+            endangered_marines_iter = iter(endangered_marines)
             
             for medivac in medivacs:
-                medivac.attack(sorted_marines.first.position)
-
-                endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines)
-                enemies_in_range = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV).filter(lambda e : e.target_in_range(medivac))
-                # pickup marines in enemy range
-                if endangered_marines:
-                    lowest_endangered_marine = endangered_marines.first
-                    if lowest_endangered_marine.health <= MARINE_BOOST_THRESHOLD and lowest_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
-                        if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
-                            medivac.move(lowest_endangered_marine.position)
-                        else:
-                            medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                    elif lowest_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
-                        medivac(AbilityId.LOAD_MEDIVAC,lowest_endangered_marine)
-                if not enemies_in_range:
-                    medivac(AbilityId.UNLOADALLAT_MEDIVAC)
+                if medivac.has_cargo:
+                    # drop off at closest safe position
+                    medivac_endangered = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(medivac))
+                    if medivac_endangered:
+                        print("in danger!")
+                        medivac.move(self.start_location)
+                    else:
+                        print("safe!")
+                        medivac(AbilityId.UNLOADALLAT_MEDIVAC)
+                else:
+                    next_endangered_marine = next(endangered_marines_iter, None)
+                    if next_endangered_marine:
+                        if next_endangered_marine.health <= MARINE_BOOST_THRESHOLD and next_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
+                            if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                                medivac(AbilityId.MEDIVACHEAL_HEAL, next_endangered_marine)
+                            else:
+                                medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                        elif next_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
+                            # move and load
+                            if medivac.position.is_same_as(next_endangered_marine.position):
+                                medivac(AbilityId.LOAD_MEDIVAC,next_endangered_marine)
+                            else:
+                                medivac.move(next_endangered_marine.position)
+                    else:
+                        next_marine = next(sorted_marines_iter, sorted_marines.first)
+                        if next_marine:
+                            medivac.attack(next_marine.position)            
 
 
 def main():
