@@ -15,6 +15,7 @@ import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from base_bots.stimpack import StimBot
+from micro.terran.medivac_pickup import pickup_micro
 
 """
 This bot tests medivac pickup micro.
@@ -64,76 +65,7 @@ class MedivacPickup(sc2.BotAI):
                 techlab.research(UpgradeId.STIMPACK)
 
             if self.already_pending_upgrade(UpgradeId.STIMPACK) > 0:
-                await self.attack()
-
-    async def attack(self):
-        """
-        Send marines to attack once there are 16 marines and 2 medivacs.
-         - Marines a move to enemy main
-         - Medivacs follow marines
-         - Stim when in range of an enemy unit
-         - When a marine falls below 20 hp, pick it up and drop it immediately ?
-         - When a marine falls below 10 hp, pick it up and keep it
-        """
-        MARINE_PICKUP_THRESHOLD = 15
-        EMPATHY_STIM_RANGE = 10
-
-        marines = self.units(UnitTypeId.MARINE)
-        medivacs = self.units(UnitTypeId.MEDIVAC)
-
-        endangered_marines_tags = set()
-
-        for marine in marines:
-            if marine.health <= 5:
-                closest_medivac = self.units(UnitTypeId.MEDIVAC).sorted(key = lambda m : m.distance_to(marine))
-                if closest_medivac:
-                    marine.move(closest_medivac.first)
-                else:
-                    marine.move(self.start_location)
-            else:
-                marine.attack(self.enemy_start_locations[0])
-
-            enemies_in_range = self.enemy_units.filter(lambda e : e.target_in_range(marine))
-            stimmed_marines_nearby = self.units.filter(lambda u : u.type_id == UnitTypeId.MARINE and u.tag != marine.tag and u.has_buff(BuffId.STIMPACK) and u.distance_to(marine) <= EMPATHY_STIM_RANGE)
-            if enemies_in_range:
-                endangered_marines_tags.add(marine.tag)
-            if (enemies_in_range or stimmed_marines_nearby) and not marine.has_buff(BuffId.STIMPACK):
-                # TODO: stim only when medivac with energy nearby
-                marine(AbilityId.EFFECT_STIM_MARINE)
-
-        sorted_marines = marines.sorted(key = lambda m : m.health)
-        sorted_marines_iter = iter(sorted_marines)
-
-        endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines_tags)
-        endangered_marines_iter = iter(endangered_marines)
-
-        for medivac in medivacs:
-            if medivac.has_cargo:
-                # drop off at closest safe position
-                medivac_endangered = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(medivac))
-                if medivac_endangered:
-                    # TODO: helper method to determine "direction" of battle
-                    medivac.move(self.start_location)
-                else:
-                    medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
-            elif not (len(medivac.orders) > 0 and medivac.orders[0].ability.id == AbilityId.LOAD_MEDIVAC):
-                next_endangered_marine = next(endangered_marines_iter, None)
-                if next_endangered_marine:
-                    if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
-                        medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                    elif next_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
-                        # move and load
-                        medivac(AbilityId.LOAD_MEDIVAC,next_endangered_marine)
-                    else:
-                        medivac(AbilityId.MEDIVACHEAL_HEAL, next_endangered_marine)
-                elif marines:
-                    next_marine = next(sorted_marines_iter, sorted_marines.random_or(None))
-                    if next_marine:
-                        medivac.attack(next_marine.position)
-                else:
-                    # no marines
-                    medivac.move(self.start_location)
-
+                await pickup_micro(self)
 
 def main():
     sc2.run_game(

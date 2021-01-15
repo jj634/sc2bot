@@ -9,7 +9,13 @@ from sc2.ids.upgrade_id import UpgradeId
 from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
+import sys
+sys.path.append(".") # Adds higher directory to python modules path.
 
+from micro.terran.medivac_pickup import pickup_micro
+
+
+#  python .\two-one-one\run.py --Map "Acropolis LE" --ComputerDifficulty "Hard" --Realtime
 class TOOBot(sc2.BotAI):
     NAME: str = "211-bot"
     """This bot's name"""
@@ -203,7 +209,8 @@ class TOOBot(sc2.BotAI):
         if self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 4:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
 
-        await self.attack()
+        if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
+            await pickup_micro(self)
 
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
@@ -223,54 +230,6 @@ class TOOBot(sc2.BotAI):
         for scv in self.workers.idle:
             # TODO: set rally, distribute workers to expo
             scv.gather(self.mineral_field.closest_to(cc))
-
-    async def attack(self):
-        """
-        Send marines to attack once there are 16 marines and 2 medivacs.
-         - Marines a move to enemy main
-         - Medivacs follow marines
-         - Stim when in range of an enemy unit
-         - When a marine falls below 20 hp, pick it up and drop it immediately ?
-         - When a marine falls below 10 hp, pick it up and keep it
-        """
-        # MEDIVAC_RANGE = 5
-        MARINE_BOOST_THRESHOLD = 30
-        MARINE_PICKUP_THRESHOLD = 15
-
-        marines = self.units(UnitTypeId.MARINE)
-        medivacs = self.units(UnitTypeId.MEDIVAC)
-
-        endangered_marines = set()
-
-        for marine in marines:
-            enemies_in_range = self.enemy_units.filter(lambda e : e.target_in_range(marine))
-            if enemies_in_range:
-                endangered_marines.add(marine.tag)
-            if marines.amount >= 16 and medivacs.amount >= 2:
-                marine.attack(self.enemy_start_locations[0])
-            if enemies_in_range and not marine.has_buff(BuffId.STIMPACK):
-                marine(AbilityId.EFFECT_STIM_MARINE)
-        if marines:
-            sorted_marines = marines.sorted(key = lambda m : m.health)
-            
-            for medivac in medivacs:
-                medivac.attack(sorted_marines.first.position)
-
-                endangered_marines = sorted_marines.filter(lambda m : m.tag in endangered_marines)
-                enemies_in_range = self.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV).filter(lambda e : e.target_in_range(medivac))
-                # pickup marines in enemy range
-                if endangered_marines:
-                    lowest_endangered_marine = endangered_marines.first
-                    if lowest_endangered_marine.health <= MARINE_BOOST_THRESHOLD and lowest_endangered_marine.health > MARINE_PICKUP_THRESHOLD:
-                        if medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) or not self.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
-                            medivac.move(lowest_endangered_marine.position)
-                        else:
-                            medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                    elif lowest_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
-                        medivac(AbilityId.LOAD_MEDIVAC,lowest_endangered_marine)
-                if not enemies_in_range:
-                    medivac(AbilityId.UNLOADALLAT_MEDIVAC)
-
 
     async def train_workers(self):
         """
