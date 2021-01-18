@@ -37,7 +37,7 @@ class TOOBot(sc2.BotAI):
         if ccs is None:
             print("no ccs!")
             target: Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
-            for unit in self.workers | self.units(UnitTypeId.MARINE):
+            for unit in self.units():
                 unit.attack(target)
             return
         else:
@@ -45,92 +45,112 @@ class TOOBot(sc2.BotAI):
 
 
         # Build order begins
-
         await self.train_workers_until(19)
         # TODO: make sure that the build doesn't continue in the middle later on in the game
 
         # 14 depot
-        if self.supply_used == 14 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
-            await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+        if (
+            self.structures(UnitTypeId.SUPPLYDEPOT).amount + self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0
+        ):
+            await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(updown, 3))
 
         # 15 barracks
-        if self.supply_used == 15 and self.can_afford(UnitTypeId.BARRACKS) and self.already_pending(UnitTypeId.BARRACKS) == 0:
-            pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=cc.position.towards(self.game_info.map_center, 15), addon_place = True)
+        if (
+            self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1
+            and self.structures(UnitTypeId.BARRACKS).amount == 0
+            and self.already_pending(UnitTypeId.BARRACKS) == 0
+        ):
+            pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near = self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
         # 16 refinery
-        if self.supply_used == 16 and self.can_afford(UnitTypeId.REFINERY) and self.already_pending(UnitTypeId.REFINERY) == 0:
-            # All the vespene geysers nearby, including ones with a refinery on top of it
-            vgs = self.vespene_geyser.closer_than(10, cc)
-            for vg in vgs:
-                # check if there is already a refinery on vg
-                if self.gas_buildings.filter(lambda unit: unit.distance_to(vg) < 1):
-                    continue
-                # Select a worker closest to the vespene geysir
-                worker: Unit = self.select_build_worker(vg)
-                # Worker can be none in cases where all workers are dead
-                # or 'select_build_worker' function only selects from workers which carry no minerals
-                if worker is None:
-                    continue
-                # Issue the build command to the worker, important: vg has to be a Unit, not a position
-                worker.build_gas(vg)
-                # Only issue one build geysir command per frame
-                break
+        if (
+            self.structures(UnitTypeId.BARRACKS).amount == 1
+            and self.gas_buildings.amount + self.already_pending(UnitTypeId.REFINERY) == 0
+        ):
+            # TODO: could be taken by enemy refinery
+            vg_filter = lambda vg : all(vg.distance_to(refinery) > 3 for refinery in self.gas_buildings)
+            unrefined_vg = self.vespene_geyser.closer_than(10, self.start_location).filter(vg_filter).random_or(None)
+            if unrefined_vg:
+                await self.build(UnitTypeId.REFINERY, near=unrefined_vg)
 
         # 19 orbital command
-        if self.supply_used == 19 and self.can_afford(UnitTypeId.ORBITALCOMMAND):
-            if self.structures(UnitTypeId.BARRACKS).ready:
-                cc.build(UnitTypeId.ORBITALCOMMAND)
+        idle_cc = self.structures(UnitTypeId.COMMANDCENTER).idle
+        if (
+            self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
+            and idle_cc
+        ):
+            idle_cc.first.build(UnitTypeId.ORBITALCOMMAND)
 
         # 19 reaper
-        if self.supply_used == 19 and self.can_afford(UnitTypeId.REAPER):
-            barrack = self.structures(UnitTypeId.BARRACKS).idle.random_or(None)
-            if barrack:
-                barrack.train(UnitTypeId.REAPER)
+        barrack = self.structures(UnitTypeId.BARRACKS).ready
+        if (
+            self.already_pending(UnitTypeId.ORBITALCOMMAND) > 0
+            and barrack 
+            and self.units(UnitTypeId.REAPER).amount + self.already_pending(UnitTypeId.REAPER) == 0
+        ):
+            barrack.first.train(UnitTypeId.REAPER)
 
         # 20 expand
-        if self.supply_used == 20 and self.can_afford(UnitTypeId.COMMANDCENTER):
+        if (
+            self.already_pending(UnitTypeId.REAPER) > 0
+            and self.townhalls.amount + self.already_pending(UnitTypeId.COMMANDCENTER) == 1
+        ):
             await self.expand_now()
 
         # 20 second barracks
-        if self.already_pending(UnitTypeId.COMMANDCENTER) != 0:
-            if self.supply_used == 20 and self.can_afford(UnitTypeId.BARRACKS) and self.already_pending(UnitTypeId.BARRACKS) == 0:
-                pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
-                await self.build(UnitTypeId.BARRACKS, near=pos)
+        if (
+            self.already_pending(UnitTypeId.COMMANDCENTER) > 0
+            and self.structures(UnitTypeId.BARRACKS).amount + self.already_pending(UnitTypeId.BARRACKS) == 1
+        ):
+            pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
+            await self.build(UnitTypeId.BARRACKS, near=pos)
 
         # 21 barracks reactor
-        if self.supply_used == 21 and self.can_afford(UnitTypeId.REACTOR) and self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0:
-            barrack = self.structures(UnitTypeId.BARRACKS).idle.random_or(None)
+        num_rax = self.structures(UnitTypeId.BARRACKS).amount + self.already_pending(UnitTypeId.BARRACKS)
+        if  (
+            1 < num_rax <= 2 # one rax completed, one in progress or completed
+            and self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
+        ):
+            barrack = self.structures(UnitTypeId.BARRACKS).ready.random_or(None)
             if barrack:
                 # TODO: check if addon location is valid
                 barrack.build(UnitTypeId.BARRACKSREACTOR)
 
-        if (self.supply_used >= 20):
+        if (self.structures(UnitTypeId.ORBITALCOMMAND).ready):
             await self.train_workers()
 
         # 22 depot
-        if self.supply_used == 22 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0:
+        if (
+            self.already_pending(UnitTypeId.BARRACKSREACTOR) > 0
+            and self.structures(UnitTypeId.SUPPLYDEPOT).amount + self.already_pending(UnitTypeId.SUPPLYDEPOT) == 1
+        ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 22 refinery
-        if self.already_pending(UnitTypeId.SUPPLYDEPOT) != 0:
-            if self.supply_used == 22 and self.can_afford(UnitTypeId.REFINERY) and self.already_pending(UnitTypeId.REFINERY) == 0:
-                vgs = self.vespene_geyser.closer_than(10, cc)
-                for vg in vgs:
-                    if self.gas_buildings.filter(lambda unit: unit.distance_to(vg) < 1):
-                        continue
-                    else:
-                        await self.build(UnitTypeId.REFINERY, near=vg)
-                        break
+        if (
+            self.already_pending(UnitTypeId.SUPPLYDEPOT) > 0
+            and self.gas_buildings.amount + self.already_pending(UnitTypeId.REFINERY) == 1
+        ):
+            # TODO: could be taken by enemy refinery
+            vg_filter = lambda vg : all(vg.distance_to(refinery) > 3 for refinery in self.gas_buildings)
+            unrefined_vg = self.vespene_geyser.closer_than(10, self.start_location).filter(vg_filter).random_or(None)
+            if unrefined_vg:
+                await self.build(UnitTypeId.REFINERY, near=unrefined_vg)
 
         # 23 factory
-        if self.supply_used == 23 and self.can_afford(UnitTypeId.FACTORY) and self.already_pending(UnitTypeId.FACTORY) == 0:
-            if self.tech_requirement_progress(UnitTypeId.FACTORY) == 1:
-                pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
-                await self.build(UnitTypeId.FACTORY, near=pos)
+        if (
+            self.gas_buildings.amount == 2
+            and self.tech_requirement_progress(UnitTypeId.FACTORY) == 1
+        ):
+            pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
+            await self.build(UnitTypeId.FACTORY, near=pos)
 
         # 26 barracks tech lab
-        if self.supply_used == 26 and self.can_afford(UnitTypeId.TECHLAB) and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0:
+        if (
+            self.already_pending(UnitTypeId.FACTORY) > 0
+            and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0
+        ):
             # barrack = self.structures(UnitTypeId.BARRACKS).filter(lambda brock: not brock.has_add_on).random
             for barrack in self.structures(UnitTypeId.BARRACKS).ready:
                 if not barrack.has_add_on:
@@ -207,7 +227,7 @@ class TOOBot(sc2.BotAI):
 
         # 53 depot
         if self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 4:
-            await self.build(UnitTypeId.SUPPLYDEPOT, near= cc.position.towards(updown, 3))
+            await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
 
         if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
             await pickup_micro(self)
@@ -229,7 +249,7 @@ class TOOBot(sc2.BotAI):
                     w.random.gather(a)
         for scv in self.workers.idle:
             # TODO: set rally, distribute workers to expo
-            scv.gather(self.mineral_field.closest_to(cc))
+            scv.gather(self.mineral_field.closest_to(self.start_location))
 
     async def train_workers(self):
         """
