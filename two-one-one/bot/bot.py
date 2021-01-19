@@ -22,6 +22,8 @@ class TOOBot(sc2.BotAI):
     RACE: Race = Race.Terran
     """This bot's Starcraft 2 race"""
 
+    reaper_created = False
+
     async def on_start(self):
         print("Game started")
         # Do things here before the game starts
@@ -45,28 +47,43 @@ class TOOBot(sc2.BotAI):
 
 
         # Build order begins
+
+        num_depots = self.structures(UnitTypeId.SUPPLYDEPOT).amount
+        pending_depots = self.already_pending(UnitTypeId.SUPPLYDEPOT)
+
+        num_barracks = self.structures(UnitTypeId.BARRACKS).amount
+        pending_barracks = self.already_pending(UnitTypeId.BARRACKS)
+
+        num_factories = self.structures(UnitTypeId.FACTORY).amount
+        pending_factories = self.already_pending(UnitTypeId.FACTORY)
+
+        num_starports = self.structures(UnitTypeId.STARPORT).amount
+        pending_starports = self.already_pending(UnitTypeId.STARPORT)
+
+        num_refineries = self.gas_buildings.amount
+        pending_refineries = self.already_pending(UnitTypeId.REFINERY)
+
         await self.train_workers_until(19)
         # TODO: make sure that the build doesn't continue in the middle later on in the game
 
         # 14 depot
         if (
-            self.structures(UnitTypeId.SUPPLYDEPOT).amount + self.already_pending(UnitTypeId.SUPPLYDEPOT) == 0
+            num_depots + pending_depots == 0
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(updown, 3))
 
         # 15 barracks
         if (
             self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1
-            and self.structures(UnitTypeId.BARRACKS).amount == 0
-            and self.already_pending(UnitTypeId.BARRACKS) == 0
+            and num_barracks + pending_barracks == 0
         ):
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near = self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
         # 16 refinery
         if (
-            self.structures(UnitTypeId.BARRACKS).amount == 1
-            and self.gas_buildings.amount + self.already_pending(UnitTypeId.REFINERY) == 0
+            num_barracks == 1
+            and num_refineries + pending_refineries == 0
         ):
             # TODO: could be taken by enemy refinery
             vg_filter = lambda vg : all(vg.distance_to(refinery) > 3 for refinery in self.gas_buildings)
@@ -88,6 +105,7 @@ class TOOBot(sc2.BotAI):
             self.already_pending(UnitTypeId.ORBITALCOMMAND) > 0
             and barrack 
             and self.units(UnitTypeId.REAPER).amount + self.already_pending(UnitTypeId.REAPER) == 0
+            and not self.reaper_created
         ):
             barrack.first.train(UnitTypeId.REAPER)
 
@@ -101,16 +119,16 @@ class TOOBot(sc2.BotAI):
         # 20 second barracks
         if (
             self.already_pending(UnitTypeId.COMMANDCENTER) > 0
-            and self.structures(UnitTypeId.BARRACKS).amount + self.already_pending(UnitTypeId.BARRACKS) == 1
+            and num_barracks + pending_barracks == 1
         ):
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
         # 21 barracks reactor
-        num_rax = self.structures(UnitTypeId.BARRACKS).amount + self.already_pending(UnitTypeId.BARRACKS)
         if  (
-            1 < num_rax <= 2 # one rax completed, one in progress or completed
-            and self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
+            pending_barracks == 1
+            and len(self.reactor_tags) + self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
+            and self.reaper_created
         ):
             barrack = self.structures(UnitTypeId.BARRACKS).ready.random_or(None)
             if barrack:
@@ -122,15 +140,15 @@ class TOOBot(sc2.BotAI):
 
         # 22 depot
         if (
-            self.already_pending(UnitTypeId.BARRACKSREACTOR) > 0
-            and self.structures(UnitTypeId.SUPPLYDEPOT).amount + self.already_pending(UnitTypeId.SUPPLYDEPOT) == 1
+            self.already_pending(UnitTypeId.BARRACKSREACTOR) == 1
+            and num_depots + pending_depots == 1
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 22 refinery
         if (
-            self.already_pending(UnitTypeId.SUPPLYDEPOT) > 0
-            and self.gas_buildings.amount + self.already_pending(UnitTypeId.REFINERY) == 1
+            pending_depots == 1
+            and num_refineries + pending_refineries == 1
         ):
             # TODO: could be taken by enemy refinery
             vg_filter = lambda vg : all(vg.distance_to(refinery) > 3 for refinery in self.gas_buildings)
@@ -140,15 +158,17 @@ class TOOBot(sc2.BotAI):
 
         # 23 factory
         if (
-            self.gas_buildings.amount == 2
+            num_refineries == 2
             and self.tech_requirement_progress(UnitTypeId.FACTORY) == 1
+            and num_factories + pending_factories + self.structures(UnitTypeId.FACTORYFLYING).amount == 0
         ):
             pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
             await self.build(UnitTypeId.FACTORY, near=pos)
 
         # 26 barracks tech lab
         if (
-            self.already_pending(UnitTypeId.FACTORY) > 0
+            pending_factories == 1
+            and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0
             and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0
         ):
             # barrack = self.structures(UnitTypeId.BARRACKS).filter(lambda brock: not brock.has_add_on).random
@@ -166,40 +186,53 @@ class TOOBot(sc2.BotAI):
                         barrack.train(UnitTypeId.MARINE)
 
         # 27 orbital on expo
-        if self.supply_used > 23 and self.structures(UnitTypeId.BARRACKS).ready:
-            # expo = self.townhalls.filter(lambda t : t.type_id == UnitTypeId.COMMANDCENTER).random
-            for expo in self.townhalls.ready:
-                if expo.type_id == UnitTypeId.COMMANDCENTER and not expo.is_transforming and self.already_pending(UnitTypeId.ORBITALCOMMAND) == 0:
-                    expo.build(UnitTypeId.ORBITALCOMMAND)
+        # if (
+        #     self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
+        #     and idle_cc
+        # ):
+        #     # expo = self.townhalls.filter(lambda t : t.type_id == UnitTypeId.COMMANDCENTER).random
+        #     for expo in self.townhalls.ready:
+        #         if expo.type_id == UnitTypeId.COMMANDCENTER and not expo.is_transforming and self.already_pending(UnitTypeId.ORBITALCOMMAND) == 0:
+        #             expo.build(UnitTypeId.ORBITALCOMMAND)
 
         # 28 stim
-        if self.supply_used > 28:
-            techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
-            if techlab_rax and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0:
-                techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
-                techlab.research(UpgradeId.STIMPACK)
+        techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
+        if (
+            techlab_rax
+            and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0
+        ):
+            techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
+            techlab.research(UpgradeId.STIMPACK)
 
         # 32 starport
-        if self.already_pending(UnitTypeId.STARPORT) == 0 and not self.structures(UnitTypeId.STARPORT) and not self.structures(UnitTypeId.STARPORTFLYING):
+        if (
+            num_starports + pending_starports == 0
+            and not self.structures(UnitTypeId.STARPORTFLYING)
+        ):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
                 pos : Point2 = await self.find_placement(UnitTypeId.STARPORT,near=self.start_location.towards(leftright, 10), addon_place = True)
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
 
         # 32 factory reactor
-        if self.already_pending(UnitTypeId.STARPORT) != 0:
-            if self.already_pending(UnitTypeId.FACTORYREACTOR) == 0 and len(self.reactor_tags) < 2:
-                factory = self.structures(UnitTypeId.FACTORY).idle.random_or(None)
-                if factory:
-                    # TODO: check if addon location is valid
-                    factory.build(UnitTypeId.FACTORYREACTOR)
+        if (
+            pending_starports == 1
+            and len(self.reactor_tags) + self.already_pending(UnitTypeId.FACTORYREACTOR) == 1
+        ):
+            factory = self.structures(UnitTypeId.FACTORY).idle.random_or(None)
+            if factory:
+                # TODO: check if addon location is valid
+                factory.build(UnitTypeId.FACTORYREACTOR)
 
         # 37 depot
-        if len(self.reactor_tags) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 2:
+        if (
+            len(self.reactor_tags) == 2
+            and num_depots == 2
+        ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 40 depot
-        if self.structures(UnitTypeId.SUPPLYDEPOT).amount == 3 and self.can_afford(UnitTypeId.SUPPLYDEPOT):
+        if num_depots == 3:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
@@ -220,13 +253,19 @@ class TOOBot(sc2.BotAI):
             facflying(AbilityId.LAND,pos)
 
         # 45 double medivac
-        if star and star.has_reactor and self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) < 2:
+        if (
+            star and star.has_reactor
+            and self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) < 2
+        ):
             starport = self.structures(UnitTypeId.STARPORT).ready.random_or(None)
             if starport:
                 starport.train(UnitTypeId.MEDIVAC)
 
         # 53 depot
-        if self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2 and self.can_afford(UnitTypeId.SUPPLYDEPOT) and self.structures(UnitTypeId.SUPPLYDEPOT).amount == 4:
+        if (
+            self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2
+            and num_depots == 4
+        ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
 
         if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
@@ -279,6 +318,10 @@ class TOOBot(sc2.BotAI):
         ):
             cc.train(UnitTypeId.SCV)
 
-    def on_end(self, result):
+    async def on_unit_created(self, unit: Unit):
+        if unit.type_id == UnitTypeId.REAPER:
+            self.reaper_created = True
+
+    async def on_end(self, result):
         print("Game ended.")
         # Do things here after the game ends
