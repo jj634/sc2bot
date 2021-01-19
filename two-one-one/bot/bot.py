@@ -95,7 +95,7 @@ class TOOBot(sc2.BotAI):
         idle_cc = self.structures(UnitTypeId.COMMANDCENTER).idle
         if (
             self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
-            and idle_cc
+            and idle_cc and not idle_cc.first.is_transforming
         ):
             idle_cc.first.build(UnitTypeId.ORBITALCOMMAND)
 
@@ -121,6 +121,7 @@ class TOOBot(sc2.BotAI):
             self.already_pending(UnitTypeId.COMMANDCENTER) > 0
             and num_barracks + pending_barracks == 1
         ):
+            # TODO: check that this does not block the first barrack's addon location
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
@@ -171,29 +172,18 @@ class TOOBot(sc2.BotAI):
             and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0
             and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0
         ):
-            # barrack = self.structures(UnitTypeId.BARRACKS).filter(lambda brock: not brock.has_add_on).random
-            for barrack in self.structures(UnitTypeId.BARRACKS).ready:
-                if not barrack.has_add_on:
-                    # TODO: check if addon location is valid
-                    barrack.build(UnitTypeId.BARRACKSTECHLAB)                
+            solo_barrack = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
+            if solo_barrack:
+                solo_barrack.first.build(UnitTypeId.BARRACKSTECHLAB)                
 
         # produce marines until 16
         # TODO: when loaded in medivacs, the number of marines decreases
         if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount + self.already_pending(UnitTypeId.MARINE) < 16:
-            for barrack in self.structures(UnitTypeId.BARRACKS).ready:
-                if barrack.has_add_on:
-                    if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
-                        barrack.train(UnitTypeId.MARINE)
+            for barrack in self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_add_on):
+                if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
+                    barrack.train(UnitTypeId.MARINE)
 
         # 27 orbital on expo
-        # if (
-        #     self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
-        #     and idle_cc
-        # ):
-        #     # expo = self.townhalls.filter(lambda t : t.type_id == UnitTypeId.COMMANDCENTER).random
-        #     for expo in self.townhalls.ready:
-        #         if expo.type_id == UnitTypeId.COMMANDCENTER and not expo.is_transforming and self.already_pending(UnitTypeId.ORBITALCOMMAND) == 0:
-        #             expo.build(UnitTypeId.ORBITALCOMMAND)
 
         # 28 stim
         techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
