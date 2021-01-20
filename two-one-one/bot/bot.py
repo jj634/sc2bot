@@ -12,7 +12,8 @@ from sc2.ids.buff_id import BuffId
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
-from micro.terran.medivac_pickup import pickup_micro
+from routines.terran.medivac_pickup import pickup_micro
+from routines.terran.depots_required import depots_required
 
 
 #  python .\two-one-one\run.py --Map "Acropolis LE" --ComputerDifficulty "Hard" --Realtime
@@ -35,18 +36,19 @@ class TOOBot(sc2.BotAI):
         leftright : Point2 = Point2((self.game_info.map_center.x, self.game_info.player_start_location.y))
 
         # If we don't have a townhall anymore, send all units to attack
-        ccs: Units = self.townhalls.ready
-        if ccs is None:
+        if not self.townhalls.ready:
             print("no ccs!")
             target: Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
             for unit in self.units():
                 unit.attack(target)
             return
-        else:
-            cc: Unit = ccs.first
 
 
         # Build order begins
+
+        finished_depots = self.structures(
+            {UnitTypeId.SUPPLYDEPOT, UnitTypeId.SUPPLYDEPOTLOWERED, UnitTypeId.SUPPLYDEPOTDROP}
+        ).ready.amount
 
         num_depots = self.structures(UnitTypeId.SUPPLYDEPOT).amount
         pending_depots = self.already_pending(UnitTypeId.SUPPLYDEPOT)
@@ -62,6 +64,8 @@ class TOOBot(sc2.BotAI):
 
         num_refineries = self.gas_buildings.amount
         pending_refineries = self.already_pending(UnitTypeId.REFINERY)
+
+        solo_barracks = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
 
         await self.train_workers_until(19)
         # TODO: make sure that the build doesn't continue in the middle later on in the game
@@ -100,6 +104,7 @@ class TOOBot(sc2.BotAI):
             idle_cc.first.build(UnitTypeId.ORBITALCOMMAND)
 
         # 19 reaper
+        # TODO: skip reaper
         barrack = self.structures(UnitTypeId.BARRACKS).ready
         if (
             self.already_pending(UnitTypeId.ORBITALCOMMAND) > 0
@@ -130,11 +135,9 @@ class TOOBot(sc2.BotAI):
             pending_barracks == 1
             and len(self.reactor_tags) + self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
             and self.reaper_created
+            and solo_barracks
         ):
-            barrack = self.structures(UnitTypeId.BARRACKS).ready.random_or(None)
-            if barrack:
-                # TODO: check if addon location is valid
-                barrack.build(UnitTypeId.BARRACKSREACTOR)
+            solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
 
         if (self.structures(UnitTypeId.ORBITALCOMMAND).ready):
             await self.train_workers()
@@ -172,16 +175,14 @@ class TOOBot(sc2.BotAI):
             and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0
             and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0
         ):
-            solo_barrack = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
-            if solo_barrack:
-                solo_barrack.first.build(UnitTypeId.BARRACKSTECHLAB)                
+            if solo_barracks:
+                solo_barracks.first.build(UnitTypeId.BARRACKSTECHLAB)
 
-        # produce marines until 16
+        # constantly produce marines
         # TODO: when loaded in medivacs, the number of marines decreases
-        if self.supply_used > 23 and self.units(UnitTypeId.MARINE).amount + self.already_pending(UnitTypeId.MARINE) < 16:
-            for barrack in self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_add_on):
-                if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
-                    barrack.train(UnitTypeId.MARINE)
+        for barrack in self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_add_on):
+            if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
+                barrack.train(UnitTypeId.MARINE)
 
         # 27 orbital on expo
 
@@ -242,24 +243,35 @@ class TOOBot(sc2.BotAI):
             pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5))
             facflying(AbilityId.LAND,pos)
 
-        # 45 double medivac
-        if (
-            star and star.has_reactor
-            and self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) < 2
-        ):
-            starport = self.structures(UnitTypeId.STARPORT).ready.random_or(None)
-            if starport:
+        # continually train medivacs
+        for starport in self.structures(UnitTypeId.STARPORT).ready.filter(lambda s : s.has_add_on):
+            if len(starport.orders) < 2:
                 starport.train(UnitTypeId.MEDIVAC)
 
-        # 53 depot
+        # continually build depots
         if (
-            self.units(UnitTypeId.MEDIVAC).amount + self.already_pending(UnitTypeId.MEDIVAC) == 2
-            and num_depots == 4
+            num_depots > 3
+            and (await depots_required(self)) > finished_depots + pending_depots
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
 
         if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
             await pickup_micro(self)
+
+        # more barracks
+        if (
+            num_starports == 1
+            and pending_barracks + self.structures(UnitTypeId.BARRACKS).ready.amount < (self.townhalls.amount * 3) - 1
+        ):
+            # TODO: check that this does not block the first barrack's addon location
+            pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
+            await self.build(UnitTypeId.BARRACKS, near=pos)
+
+        if (
+            self.already_pending_upgrade(UpgradeId.STIMPACK) > 0
+            and solo_barracks
+        ):
+            solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
 
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
