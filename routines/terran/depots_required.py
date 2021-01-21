@@ -39,7 +39,7 @@ async def depots_required(
     growth_speed += factory_count * 2 / 21.0
 
     # https://liquipedia.net/starcraft2/Starport_(Legacy_of_the_Void)
-    # We'll ues viking timing here
+    # We'll use viking timing here
     growth_speed += starport_count * 2 / 30.0
 
     growth_speed *= 1.2  # Just a little bit of margin of error

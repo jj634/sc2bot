@@ -69,7 +69,7 @@ async def pickup_micro(
         elif not (len(medivac.orders) > 0 and medivac.orders[0].ability.id == AbilityId.LOAD_MEDIVAC):
             next_endangered_marine = next(endangered_marines_iter, None)
             if next_endangered_marine:
-                if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and bot.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and await bot.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
                     medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                 elif next_endangered_marine.health <= MARINE_PICKUP_THRESHOLD:
                     # move and load

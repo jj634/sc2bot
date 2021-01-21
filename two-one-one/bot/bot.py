@@ -15,15 +15,26 @@ sys.path.append(".") # Adds higher directory to python modules path.
 from routines.terran.medivac_pickup import pickup_micro
 from routines.terran.depots_required import depots_required
 
+from typing import Set
+
 
 #  python .\two-one-one\run.py --Map "Acropolis LE" --ComputerDifficulty "Hard" --Realtime
 class TOOBot(sc2.BotAI):
+    """
+    plan:
+    harass as much as possible with marine drops, trying to outposition the enemy's main army
+    turtle at home with walls, tanks, pfs, and turrets
+     - expand to only three locations
+    """
     NAME: str = "211-bot"
-    """This bot's name"""
     RACE: Race = Race.Terran
-    """This bot's Starcraft 2 race"""
 
     reaper_created = False
+    harass_groups : Set[Units] = set()
+    waiting_army : Units = None
+    # size of harass groups in terms of number of medivacs. scales based on number of bases
+    HARASS_SIZE = 1
+
 
     async def on_start(self):
         print("Game started")
@@ -223,7 +234,7 @@ class TOOBot(sc2.BotAI):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # 40 depot
-        if num_depots == 3:
+        if num_depots + pending_depots == 3:
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
@@ -258,9 +269,19 @@ class TOOBot(sc2.BotAI):
         if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
             await pickup_micro(self)
 
+        # combat shields
+        if (
+            techlab_rax
+            and self.already_pending_upgrade(UpgradeId.STIMPACK) == 1
+            and self.already_pending_upgrade(UpgradeId.SHIELDWALL) == 0
+        ):
+            techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
+            techlab.research(UpgradeId.SHIELDWALL)
+
         # more barracks
         if (
             num_starports == 1
+            and self.already_pending_upgrade(UpgradeId.SHIELDWALL) > 0
             and pending_barracks + self.structures(UnitTypeId.BARRACKS).ready.amount < (self.townhalls.amount * 3) - 1
         ):
             # TODO: check that this does not block the first barrack's addon location
@@ -321,7 +342,12 @@ class TOOBot(sc2.BotAI):
             cc.train(UnitTypeId.SCV)
 
     async def on_unit_created(self, unit: Unit):
-        if unit.type_id == UnitTypeId.REAPER:
+        if unit.type_id == UnitTypeId.MARINE:
+            if self.waiting_army:
+                self.waiting_army.append(unit)
+            else:
+                self.waiting_army = Units({unit}, self)
+        elif unit.type_id == UnitTypeId.REAPER:
             self.reaper_created = True
 
     async def on_end(self, result):
