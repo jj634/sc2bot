@@ -5,7 +5,7 @@ from sc2.bot_ai import BotAI
 from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
-from typing import Union
+from typing import Dict, Set, Union
 
 # TODO: figure out relative imports
 import sys
@@ -34,22 +34,23 @@ class DropTactics:
         assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
         assert marines.amount == medivacs.amount * 8, "need " + str(medivacs.amount * 8) + " marines for " + str(medivacs.amount) + " medivacs"
 
-        self._marines = marines
-        self._medivacs = medivacs
+        # cannot store unit objects because their distance_calculation_index changes on each iteration
+        self._marine_tags : Set[int] = marines.tags
+        self._medivac_tags : Set[int] = medivacs.tags
         self._target = target
         self._bot_object = bot_object
         self._mode = 0
         self._loaded = False
 
     @property
-    def marines(self) -> Units:
-        """ Returns the marines in this drop. """
-        return self._marines
+    def marine_tags(self) -> Units:
+        """ Returns the tags of marines in this drop. """
+        return self._marine_tags
 
     @property
-    def medivacs(self) -> Units:
-        """ Returns the medivacs in this drop. """
-        return self._medivacs
+    def medivac_tags(self) -> Units:
+        """ Returns the tags of medivacs in this drop. """
+        return self._medivac_tags
 
     @property
     def mode(self) -> int:
@@ -68,37 +69,43 @@ class DropTactics:
         # TODO: what if all the marines are dead?
         return self._loaded
 
-    async def handle(self):
+    async def handle(self, units_by_tag : Dict[int, Unit]):
+        medivacs : Units = Units({units_by_tag[m_tag] for m_tag in self._medivac_tags}, self._bot_object)
+        
+        loaded_marine_tags : Set[int] = set().union(*(medivac.passengers_tags for medivac in medivacs))
+        unloaded_marine_tags : Set[int] = self._marine_tags - loaded_marine_tags
+        unloaded_marines : Units = Units({units_by_tag[m_tag] for m_tag in unloaded_marine_tags}, self._bot_object)
+
         if self._mode == 0:
-            unloaded_marines = self._marines.filter(lambda m : all(m not in medivac.passengers for medivac in self._medivacs))
             if unloaded_marines: # load up all marines
                 medivac_cargos = {
-                    medivac : medivac.cargo_left for medivac in self._medivacs
+                    medivac : medivac.cargo_left for medivac in medivacs
                 }
                 for marine in unloaded_marines:
-                    free_medivacs = filter(lambda medivac : medivac_cargos[medivac] > 0, self._medivacs)
+                    free_medivacs = filter(lambda medivac : medivac_cargos[medivac] > 0, medivacs)
                     closest_free_medivac = min((medivac for medivac in free_medivacs), key= lambda u : u.distance_to(marine))
                     marine.smart(closest_free_medivac)
                     medivac_cargos[closest_free_medivac] -= 1
-                for medivac in self._medivacs:
+                for medivac in medivacs:
                     medivac.move(unloaded_marines.random)
             else:
-                medivac_centroid : Point2 = centroid(self._medivacs)
+                medivac_centroid : Point2 = centroid(medivacs)
                 # move medivacs towards each other if too far apart
-                if any(medivac.distance_to(medivac_centroid) > self.MEDIVAC_LEASH for medivac in self._medivacs):
-                    for medivac in self._medivacs:
+                if any(medivac.distance_to(medivac_centroid) > self.MEDIVAC_LEASH for medivac in medivacs):
+                    print("too far!")
+                    for medivac in medivacs:
                         medivac.move(medivac_centroid)
                 else: # move medivacs to target
-                    for medivac in self._medivacs:
+                    for medivac in medivacs:
                         medivac.move(self._target)
                     self._mode = 1
         elif self._mode == 1:
             # en route to enemy base. constantly boost when possible and outside of BOOST_SAVE_RADIUS
-            if all(not medivac.has_cargo for medivac in self._medivacs):
+            if all(not medivac.has_cargo for medivac in medivacs):
                 self._mode = 2
             else:
                 # TODO: just retreat if too many enemy units at target location
-                for medivac in self._medivacs:
+                for medivac in medivacs:
                     target_proximity = medivac.distance_to(self._target)
                     if target_proximity <= self.EXPANSION_RADIUS:
                         medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
@@ -110,4 +117,4 @@ class DropTactics:
                         medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
         elif self._mode == 2:
             # TODO: retreat if too many enemies
-            await pickup_micro(self._bot_object,self._marines, self._medivacs, self._target)
+            await pickup_micro(self._bot_object,unloaded_marines, medivacs, self._target)

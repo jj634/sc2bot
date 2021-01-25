@@ -11,7 +11,7 @@ from sc2 import Race, Difficulty
 from sc2.player import Bot, Computer
 
 
-from typing import Set
+from typing import Dict, Set
 
 # TODO: figure out relative imports
 import sys
@@ -29,13 +29,15 @@ class DropTacticsTest(sc2.BotAI):
     harass_groups : Set[DropTactics] = set()
     waiting_army : Units = None
     # size of harass groups in terms of number of medivacs. scales based on number of bases
-    HARASS_SIZE = 2
+    HARASS_SIZE = 1
+    def __init__(self):
+        self.units_by_tag : Dict[int, Unit] = None
 
     async def on_start(self):
         await self.client.debug_create_unit(
             [
-                [UnitTypeId.MEDIVAC, 6, self.start_location.towards(self.game_info.map_center, 15), 1],
-                [UnitTypeId.MARINE, 48, self.start_location.towards(self.game_info.map_center, 15), 1],
+                [UnitTypeId.MEDIVAC, 1, self.start_location.towards(self.game_info.map_center, 15), 1],
+                [UnitTypeId.MARINE, 8, self.start_location.towards(self.game_info.map_center, 15), 1],
             ]
         )
         await self.client.debug_control_enemy()
@@ -43,6 +45,11 @@ class DropTacticsTest(sc2.BotAI):
         await self.client.debug_all_resources()
 
     async def on_step(self, iteration):
+        self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
+        for unit in self.units:
+            print(str(unit.tag) + " " + str(unit.type_id))
+
+
         if iteration == 1:
             raxpos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 5), addon_place = True)
             await self.client.debug_create_unit(
@@ -85,7 +92,7 @@ class DropTacticsTest(sc2.BotAI):
                     self.harass_groups.add(DropTactics(new_harass_marines, new_harass_medivacs, self.enemy_start_locations[0], self))
 
             for group in self.harass_groups:
-                await group.handle()
+                await group.handle(self.units_by_tag)
 
     async def on_unit_created(self, unit: Unit):
         if unit.type_id == UnitTypeId.MARINE or unit.type_id == UnitTypeId.MEDIVAC:

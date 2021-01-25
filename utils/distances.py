@@ -2,15 +2,15 @@ from sc2.units import Units
 from sc2.unit import Unit
 from sc2.position import Point2
 
-from typing import Set, Union
+import operator
+from functools import reduce
+from typing import List, Union
 
 
-def centroid(points : Union[Set[Unit],Set[Point2]]) -> Point2:
+def centroid(units : List[Unit]) -> Point2:
     """
     Calculates the centroid for a set of Unit or Point2.
 
     :param points:
     """
-    if isinstance(points, Set[Unit]):
-        return sum(unit.position for unit in points) / len(points)
-    return sum(point for point in points) / len(points)
+    return reduce(operator.add, (unit.position for unit in units)) / len(units)
