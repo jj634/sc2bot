@@ -1,7 +1,6 @@
 import sc2
-from sc2.position import Point2, Point3
+from sc2.position import Point2
 from sc2 import Race, Difficulty
-from sc2.data import Result
 from sc2.player import Bot, Computer
 from sc2.unit import Unit
 from sc2.units import Units
@@ -15,7 +14,7 @@ import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from base_bots.stimpack import StimBot
-from micro.terran.medivac_pickup import pickup_micro
+from routines.terran.medivac_pickup import pickup_micro
 
 """
 This bot tests medivac pickup micro.

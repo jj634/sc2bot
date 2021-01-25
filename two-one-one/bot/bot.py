@@ -266,9 +266,6 @@ class TOOBot(sc2.BotAI):
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
 
-        if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
-            await pickup_micro(self)
-
         # combat shields
         if (
             techlab_rax
@@ -282,7 +279,7 @@ class TOOBot(sc2.BotAI):
         if (
             num_starports == 1
             and self.already_pending_upgrade(UpgradeId.SHIELDWALL) > 0
-            and pending_barracks + self.structures(UnitTypeId.BARRACKS).ready.amount < (self.townhalls.amount * 3) - 1
+            and pending_barracks + self.structures(UnitTypeId.BARRACKS).ready.amount < min((self.townhalls.amount * 3) - 1, 8)
         ):
             # TODO: check that this does not block the first barrack's addon location
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
@@ -293,6 +290,26 @@ class TOOBot(sc2.BotAI):
             and solo_barracks
         ):
             solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
+
+        # harass
+        if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
+            await pickup_micro(self)
+            waiting_marines = self.waiting_army(UnitTypeId.MARINE).amount
+            waiting_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).amount
+
+            if (
+                waiting_marines >= self.HARASS_SIZE * 8
+                and waiting_medivacs >= self.HARASS_SIZE
+            ):
+                new_harass_marines = self.waiting_army(UnitTypeId.MARINE).take(self.HARASS_SIZE * 8)
+                new_harass_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).take(self.HARASS_SIZE)
+                new_harass_group = new_harass_marines + new_harass_medivacs
+
+                self.waiting_army -= new_harass_group
+                self.harass_groups.add(new_harass_group)
+
+        for group in self.harass_groups:
+
 
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
