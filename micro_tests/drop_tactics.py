@@ -46,8 +46,6 @@ class DropTacticsTest(sc2.BotAI):
 
     async def on_step(self, iteration):
         self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
-        for unit in self.units:
-            print(str(unit.tag) + " " + str(unit.type_id))
 
 
         if iteration == 1:

@@ -18,8 +18,8 @@ from routines.terran.medivac_pickup import pickup_micro
 
 class DropTactics:
 
-    BOOST_SAVE_RADIUS = 50
-    BOOST_RADIUS = 25
+    BOOST_SAVE_RADIUS = 70
+    BOOST_RADIUS = 30
     EXPANSION_RADIUS = 15
     MEDIVAC_LEASH = 2
     
@@ -70,11 +70,14 @@ class DropTactics:
         return self._loaded
 
     async def handle(self, units_by_tag : Dict[int, Unit]):
-        medivacs : Units = Units({units_by_tag[m_tag] for m_tag in self._medivac_tags}, self._bot_object)
+        alive_medivacs = self._medivac_tags & units_by_tag.keys()
+        medivacs : Units = Units({units_by_tag[m_tag] for m_tag in alive_medivacs}, self._bot_object)
+        self._medivac_tags = alive_medivacs
         
         loaded_marine_tags : Set[int] = set().union(*(medivac.passengers_tags for medivac in medivacs))
-        unloaded_marine_tags : Set[int] = self._marine_tags - loaded_marine_tags
-        unloaded_marines : Units = Units({units_by_tag[m_tag] for m_tag in unloaded_marine_tags}, self._bot_object)
+        alive_unloaded_marine_tags = self._marine_tags & units_by_tag.keys()
+        unloaded_marines : Units = Units({units_by_tag[m_tag] for m_tag in alive_unloaded_marine_tags}, self._bot_object)
+        self._marine_tags = alive_unloaded_marine_tags | loaded_marine_tags
 
         if self._mode == 0:
             if unloaded_marines: # load up all marines
@@ -83,7 +86,7 @@ class DropTactics:
                 }
                 for marine in unloaded_marines:
                     free_medivacs = filter(lambda medivac : medivac_cargos[medivac] > 0, medivacs)
-                    closest_free_medivac = min((medivac for medivac in free_medivacs), key= lambda u : u.distance_to(marine))
+                    closest_free_medivac = min((medivac for medivac in free_medivacs), key= lambda u : self._bot_object._distance_squared_unit_to_unit(u, marine))
                     marine.smart(closest_free_medivac)
                     medivac_cargos[closest_free_medivac] -= 1
                 for medivac in medivacs:
@@ -106,14 +109,20 @@ class DropTactics:
             else:
                 # TODO: just retreat if too many enemy units at target location
                 for medivac in medivacs:
+                    print(medivac.position3d)
                     target_proximity = medivac.distance_to(self._target)
                     if target_proximity <= self.EXPANSION_RADIUS:
-                        medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
+                        print("entered enemy base")
+                        if (medivac.is_moving):
+                            medivac.stop()
+                        else:
+                            medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                     elif (
                         not self.BOOST_RADIUS < target_proximity < self.BOOST_SAVE_RADIUS
                         and not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST)
                         and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                     ):
+                        print("boosting")
                         medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
         elif self._mode == 2:
             # TODO: retreat if too many enemies
