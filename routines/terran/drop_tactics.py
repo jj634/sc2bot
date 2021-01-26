@@ -18,9 +18,11 @@ from routines.terran.medivac_pickup import pickup_micro
 
 class DropTactics:
 
-    BOOST_SAVE_RADIUS = 70
-    BOOST_RADIUS = 30
+    # medivacs can travel approx 31.72 during boost,
+    # and approx 63.77 between boosts (unupgraded)
     EXPANSION_RADIUS = 15
+    BOOST_SAVE_RADIUS = EXPANSION_RADIUS + 64
+    BOOST_RADIUS = EXPANSION_RADIUS + 16
     MEDIVAC_LEASH = 2
     
 
@@ -95,7 +97,6 @@ class DropTactics:
                 medivac_centroid : Point2 = centroid(medivacs)
                 # move medivacs towards each other if too far apart
                 if any(medivac.distance_to(medivac_centroid) > self.MEDIVAC_LEASH for medivac in medivacs):
-                    print("too far!")
                     for medivac in medivacs:
                         medivac.move(medivac_centroid)
                 else: # move medivacs to target
@@ -109,10 +110,8 @@ class DropTactics:
             else:
                 # TODO: just retreat if too many enemy units at target location
                 for medivac in medivacs:
-                    print(medivac.position3d)
                     target_proximity = medivac.distance_to(self._target)
                     if target_proximity <= self.EXPANSION_RADIUS:
-                        print("entered enemy base")
                         if (medivac.is_moving):
                             medivac.stop()
                         else:
@@ -122,7 +121,6 @@ class DropTactics:
                         and not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST)
                         and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                     ):
-                        print("boosting")
                         medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
         elif self._mode == 2:
             # TODO: retreat if too many enemies
