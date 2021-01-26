@@ -19,10 +19,10 @@ async def pickup_micro(
     ):
     """
     Pickup micro on medivacs and marines.
-        - Marines a move to enemy main.
-        - Medivacs heal lowest marines.
-        - Stim when in range of an enemy unit. Marines less than 10 away from a stimmed marine will stim themselves.
-        - Marines are picked up when at or below 15 HP, and dropped off at a safe location.
+     - Marines a move to enemy main.
+     - Medivacs heal lowest marines.
+     - Stim when in range of an enemy unit. Marines less than 10 away from a stimmed marine will stim themselves.
+     - Marines are picked up when at or below 15 HP, and dropped off at a safe location.
     """
     MARINE_PICKUP_THRESHOLD = 15
     EMPATHY_STIM_RANGE = 10
@@ -32,24 +32,26 @@ async def pickup_micro(
     target = target or bot.enemy_start_locations[0]
 
     endangered_marines_tags = set()
+    energy_medivacs = medivacs.filter(lambda m : m.energy_percentage >= 0.1)
 
     for marine in marines:
-        if marine.health <= 5:
-            closest_medivac = medivacs.sorted(key = lambda m : m.distance_to(marine))
-            if closest_medivac:
-                marine.move(closest_medivac.first)
-            else:
-                marine.move(bot.start_location)
-        else:
-            marine.attack(target)
-
         enemies_in_range = bot.enemy_units.filter(lambda e : e.target_in_range(marine))
         stimmed_marines_nearby = marines.filter(lambda u : u.type_id == UnitTypeId.MARINE and u.tag != marine.tag and u.has_buff(BuffId.STIMPACK) and u.distance_to(marine) <= EMPATHY_STIM_RANGE)
         if enemies_in_range:
             endangered_marines_tags.add(marine.tag)
-        if (enemies_in_range or stimmed_marines_nearby) and not marine.has_buff(BuffId.STIMPACK):
-            # TODO: stim only when medivac with energy nearby
+        if enemies_in_range and marine.health <= 10:
+            closest_medivac = medivacs.sorted(key = lambda m : m.distance_to(marine))
+            if closest_medivac:
+                marine.smart(closest_medivac.first)
+            # TODO: retreat to start location if medivacs dead                
+        elif (
+            (enemies_in_range or stimmed_marines_nearby)
+            and not marine.has_buff(BuffId.STIMPACK)
+            and energy_medivacs
+        ):
             marine(AbilityId.EFFECT_STIM_MARINE)
+        else:
+            marine.attack(target)
 
     sorted_marines = marines.sorted(key = lambda m : m.health)
     sorted_marines_iter = iter(sorted_marines)

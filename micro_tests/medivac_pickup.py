@@ -13,7 +13,7 @@ from sc2.ids.buff_id import BuffId
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
-from base_bots.stimpack import StimBot
+from base_bots.stimbot import StimBot
 from routines.terran.medivac_pickup import pickup_micro
 
 """
