@@ -21,12 +21,13 @@ class DropTactics:
     # medivacs can travel approx 31.72 during boost,
     # and approx 63.77 between boosts (unupgraded)
     EXPANSION_RADIUS = 15
-    BOOST_SAVE_RADIUS = EXPANSION_RADIUS + 64
     BOOST_RADIUS = EXPANSION_RADIUS + 16
+    BOOST_SAVE_RADIUS = BOOST_RADIUS + 64
+
     MEDIVAC_LEASH = 2
     
 
-    def __init__(self, marines : Units, medivacs : Units, target : Union[Unit, Point2, Point3], bot_object : BotAI):
+    def __init__(self, marines : Units, medivacs : Units, target : Point2, retreat_point : Point2, bot_object : BotAI):
         """
         :param marines:
         :param medivacs:
@@ -40,6 +41,7 @@ class DropTactics:
         self._marine_tags : Set[int] = marines.tags
         self._medivac_tags : Set[int] = medivacs.tags
         self._target = target
+        self._retreat_point = retreat_point
         self._bot_object = bot_object
         self._mode = 0
         self._loaded = False
@@ -105,23 +107,27 @@ class DropTactics:
                     self._mode = 1
         elif self._mode == 1:
             # en route to enemy base. constantly boost when possible and outside of BOOST_SAVE_RADIUS
-            if all(not medivac.has_cargo for medivac in medivacs):
-                self._mode = 2
-            else:
-                # TODO: just retreat if too many enemy units at target location
-                for medivac in medivacs:
-                    target_proximity = medivac.distance_to(self._target)
-                    if target_proximity <= self.EXPANSION_RADIUS:
-                        if (medivac.is_moving):
-                            medivac.stop()
-                        else:
-                            medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
-                    elif (
-                        not self.BOOST_RADIUS < target_proximity < self.BOOST_SAVE_RADIUS
-                        and not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST)
-                        and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                    ):
-                        medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+            # TODO: just retreat if too many enemy units at target location
+            for medivac in medivacs:
+                target_proximity = medivac.distance_to(self._target)
+                if target_proximity <= self.EXPANSION_RADIUS:
+                    if (medivac.is_moving):
+                        medivac.stop()
+                    else:
+                        self._mode = 2
+                elif (
+                    not self.BOOST_RADIUS < target_proximity < self.BOOST_SAVE_RADIUS
+                    and not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST)
+                    and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                ):
+                    medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
         elif self._mode == 2:
-            # TODO: retreat if too many enemies
-            await pickup_micro(self._bot_object,unloaded_marines, medivacs, self._target)
+            retreat = await pickup_micro(self._bot_object,unloaded_marines, medivacs, self._target, self._retreat_point)
+            if retreat:
+                if unloaded_marines:
+                    for medivac in medivacs:
+                        medivac.move(unloaded_marines.random)
+                else:
+                    self._mode = 3
+        else:
+            medivac.move(self._retreat_point)

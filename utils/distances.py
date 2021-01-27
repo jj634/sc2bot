@@ -1,4 +1,3 @@
-from sc2.units import Units
 from sc2.unit import Unit
 from sc2.position import Point2
 
@@ -9,7 +8,7 @@ from typing import List, Union
 
 def centroid(units : List[Unit]) -> Point2:
     """
-    Calculates the centroid for a set of Unit or Point2.
+    Calculates the centroid of a Unit list.
 
     :param points:
     """
