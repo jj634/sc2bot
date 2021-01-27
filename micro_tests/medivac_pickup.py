@@ -64,7 +64,7 @@ class MedivacPickup(sc2.BotAI):
                 techlab.research(UpgradeId.STIMPACK)
 
             if self.already_pending_upgrade(UpgradeId.STIMPACK) > 0:
-                await pickup_micro(self)
+                await pickup_micro(self, self.units(UnitTypeId.MARINE), self.units(UnitTypeId.MEDIVAC), self.enemy_start_locations[0], self.start_location, retreatable=False)
 
 def main():
     sc2.run_game(

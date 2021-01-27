@@ -16,7 +16,8 @@ async def pickup_micro(
     marines : Units = None,
     medivacs: Units = None,
     target: Point2 = None,
-    retreat_point: Point2 = None
+    retreat_point: Point2 = None,
+    retreatable = True
     ) -> bool:
     """
     Pickup micro on medivacs and marines.
@@ -37,7 +38,7 @@ async def pickup_micro(
 
     loaded_marines = Units(set().union(*(medivac.passengers for medivac in medivacs)), bot)
     all_marines : Units = marines + loaded_marines
-    if not all_marines:
+    if not all_marines and retreatable:
         retreat = True
 
     endangered_marines_tags : Set[int] = set()
@@ -55,7 +56,7 @@ async def pickup_micro(
         enemy_dps += enemy_unit.calculate_dps_vs_target(all_marines.first)
     
     own_dps = all_marines.first.ground_dps * all_marines.amount
-    if enemy_dps > own_dps * 1.2:
+    if enemy_dps > own_dps * 1.2 and retreatable:
         retreat = True
 
     energy_medivacs : Units = medivacs.filter(lambda m : m.energy_percentage >= 0.1)
