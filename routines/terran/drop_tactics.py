@@ -46,6 +46,7 @@ class DropTactics:
         self._retreat_point = retreat_point
         self._bot_object = bot_object
         self._mode = 2 if walk else 0
+        self._walk = walk
 
     @property
     def marine_tags(self) -> Units:
@@ -167,5 +168,14 @@ class DropTactics:
             else:
                 self._mode = 4
         else:
+            cargo_medivacs = medivacs.filter(lambda m : m.has_cargo)
             for medivac in medivacs:
-                medivac.move(self._retreat_point)
+                if medivac.distance_to(self._retreat_point) < 5:
+                    if not cargo_medivacs:
+                        self._mode = 2 if self._walk else 0
+                    else:
+                        medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
+                        if medivac.is_moving:
+                            medivac.hold_position()
+                else:
+                    medivac.move(self._retreat_point)
