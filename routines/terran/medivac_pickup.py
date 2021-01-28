@@ -42,21 +42,24 @@ async def pickup_micro(
         retreat = True
 
     endangered_marines_tags : Set[int] = set()
-    enemies_in_marines_range : Units = Units({},bot)
+    enemies_in_marines_range : Set[Unit] = set()
 
     for marine in marines:
         enemies_in_range = bot.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine))
         if enemies_in_range:
-            enemies_in_marines_range += enemies_in_range
+            enemies_in_marines_range |= set(enemies_in_range)
             endangered_marines_tags.add(marine.tag)
 
 
-    enemy_dps = 0    
+    enemy_dps = 0
     for enemy_unit in enemies_in_marines_range:
         enemy_dps += enemy_unit.calculate_dps_vs_target(all_marines.first)
     
     own_dps = all_marines.first.ground_dps * all_marines.amount if all_marines else 0
-    if enemy_dps > own_dps * 1.2 and retreatable:
+    print("own_dps: " + str(own_dps) + ", len: " + str(all_marines.amount))
+    print("enemy_dps: " + str(enemy_dps) + ", len: " + str(len(enemies_in_marines_range)))
+    if enemy_dps > own_dps * 1.5 and retreatable:
+        print("too many")
         retreat = True
 
     energy_medivacs : Units = medivacs.filter(lambda m : m.energy_percentage >= 0.1)
