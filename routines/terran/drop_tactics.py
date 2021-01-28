@@ -104,7 +104,7 @@ class DropTactics:
                     for medivac in medivacs:
                         medivac.move(self._target)
                     self._mode = 1
-        elif self._mode == 1:
+        if self._mode == 1:
             # en route to enemy base. constantly boost when possible and outside of BOOST_SAVE_RADIUS
             # TODO: just retreat if too many enemy units at target location
             for medivac in medivacs:
@@ -120,7 +120,7 @@ class DropTactics:
                     and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                 ):
                     medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-        elif self._mode == 2:
+        if self._mode == 2:
             retreat = False
 
             if not all_marines:
@@ -158,7 +158,7 @@ class DropTactics:
                     target=self._target,
                     retreat_point=self._retreat_point
                 )
-        elif self._mode == 3:
+        if self._mode == 3:
             if unloaded_marines:
                 for medivac in medivacs:
                     medivac.move(unloaded_marines.random)
@@ -167,7 +167,7 @@ class DropTactics:
                     marine.smart(closest_medivac.first)
             else:
                 self._mode = 4
-        else:
+        if self._mode == 4:
             cargo_medivacs = medivacs.filter(lambda m : m.has_cargo)
             for medivac in medivacs:
                 if medivac.distance_to(self._retreat_point) < 5:
