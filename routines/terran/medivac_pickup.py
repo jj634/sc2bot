@@ -55,16 +55,16 @@ async def pickup_micro(
     for enemy_unit in enemies_in_marines_range:
         enemy_dps += enemy_unit.calculate_dps_vs_target(all_marines.first)
     
-    own_dps = all_marines.first.ground_dps * all_marines.amount
+    own_dps = all_marines.first.ground_dps * all_marines.amount if all_marines else 0
     if enemy_dps > own_dps * 1.2 and retreatable:
         retreat = True
 
     energy_medivacs : Units = medivacs.filter(lambda m : m.energy_percentage >= 0.1)
     for marine in marines:
-        stimmed_marines_nearby = marines.filter(
+        endangered_marines_nearby = marines.filter(
             lambda u : u.type_id == UnitTypeId.MARINE
                         and u.tag != marine.tag
-                        and u.has_buff(BuffId.STIMPACK)
+                        and u.tag in endangered_marines_tags
                         and u.distance_to(marine) <= EMPATHY_STIM_RANGE)
 
         marine_endangered = marine.tag in endangered_marines_tags
@@ -76,7 +76,7 @@ async def pickup_micro(
             closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
             marine.smart(closest_medivac.first)
         elif (
-            (marine_endangered or stimmed_marines_nearby)
+            (marine_endangered or endangered_marines_nearby)
             and not marine.has_buff(BuffId.STIMPACK)
             and energy_medivacs
         ):
@@ -96,11 +96,13 @@ async def pickup_micro(
             if medivac.has_cargo:
                 # drop off at closest safe position
                 medivac_endangered = bot.enemy_units.filter(lambda e : e.target_in_range(medivac))
-                if medivac_endangered:
+                if not medivac_endangered:
+                    medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
+                    if medivac.is_moving:
+                        medivac.hold_position()
+                else:
                     # TODO: helper method to determine "direction" of battle
                     medivac.move(retreat_point)
-                else:
-                    medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
             elif not (len(medivac.orders) > 0 and medivac.orders[0].ability.id == AbilityId.LOAD_MEDIVAC):
                 next_endangered_marine = next(endangered_marines_iter, None)
                 if next_endangered_marine:
