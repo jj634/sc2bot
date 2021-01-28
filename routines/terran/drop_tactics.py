@@ -2,6 +2,7 @@ from sc2.units import Units
 from sc2.unit import Unit
 from sc2.position import Point2, Point3
 from sc2.bot_ai import BotAI
+from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
@@ -27,12 +28,13 @@ class DropTactics:
     MEDIVAC_LEASH = 2
     
 
-    def __init__(self, marines : Units, medivacs : Units, target : Point2, retreat_point : Point2, bot_object : BotAI):
+    def __init__(self, marines : Units, medivacs : Units, target : Point2, retreat_point : Point2, bot_object : BotAI, walk : bool = False):
         """
         :param marines:
         :param medivacs:
         :param target:
         :param bot_object:
+        :param walk:
         """
         assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
         assert marines.amount == medivacs.amount * 8, "need " + str(medivacs.amount * 8) + " marines for " + str(medivacs.amount) + " medivacs"
@@ -43,7 +45,7 @@ class DropTactics:
         self._target = target
         self._retreat_point = retreat_point
         self._bot_object = bot_object
-        self._mode = 0
+        self._mode = 2 if walk else 0
         self._loaded = False
 
     @property
@@ -63,7 +65,8 @@ class DropTactics:
          - 0: Idle
          - 1: Moving towards target
          - 2: Attacking
-         - 3: Retreating
+         - 3: Picking up to retreat
+         - 4: Retreating
         """
         return self._mode
 
@@ -74,13 +77,15 @@ class DropTactics:
         return self._loaded
 
     async def handle(self, units_by_tag : Dict[int, Unit]):
-        alive_medivacs = self._medivac_tags & units_by_tag.keys()
-        medivacs : Units = Units({units_by_tag[m_tag] for m_tag in alive_medivacs}, self._bot_object)
-        self._medivac_tags = alive_medivacs
+        alive_medivac_tags = self._medivac_tags & units_by_tag.keys()
+        medivacs : Units = Units({units_by_tag[m_tag] for m_tag in alive_medivac_tags}, self._bot_object)
+        self._medivac_tags = alive_medivac_tags
         
-        loaded_marine_tags : Set[int] = set().union(*(medivac.passengers_tags for medivac in medivacs))
+        loaded_marines = Units(set().union(*(medivac.passengers for medivac in medivacs)), self._bot_object)
+        loaded_marine_tags = loaded_marines.tags
         alive_unloaded_marine_tags = self._marine_tags & units_by_tag.keys()
         unloaded_marines : Units = Units({units_by_tag[m_tag] for m_tag in alive_unloaded_marine_tags}, self._bot_object)
+        all_marines : Units = loaded_marines + unloaded_marines
         self._marine_tags = alive_unloaded_marine_tags | loaded_marine_tags
 
         if self._mode == 0:
@@ -122,12 +127,52 @@ class DropTactics:
                 ):
                     medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
         elif self._mode == 2:
-            retreat = await pickup_micro(self._bot_object,unloaded_marines, medivacs, self._target, self._retreat_point)
+            retreat = False
+
+            if not all_marines:
+                retreat = True
+
+            endangered_marines_tags : Set[int] = set()
+            enemies_in_marines_range : Set[Unit] = set()
+
+            for marine in unloaded_marines:
+                enemies_in_range = self._bot_object.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine))
+                if enemies_in_range:
+                    enemies_in_marines_range |= set(enemies_in_range)
+                    endangered_marines_tags.add(marine.tag)
+
+            enemy_dps = 0
+            for enemy_unit in enemies_in_marines_range:
+                enemy_unit_dps = enemy_unit.calculate_dps_vs_target(unloaded_marines.first) if unloaded_marines else enemy_unit.ground_dps
+                enemy_dps += enemy_unit_dps
+            
+            own_dps = all_marines.first.ground_dps * all_marines.amount if all_marines else 0
+            print("own_dps: " + str(own_dps) + ", len: " + str(all_marines.amount))
+            print("enemy_dps: " + str(enemy_dps) + ", len: " + str(len(enemies_in_marines_range)))
+            if enemy_dps > own_dps * 1.5:
+                print("too many")
+                retreat = True
+            
             if retreat:
-                if unloaded_marines:
-                    for medivac in medivacs:
-                        medivac.move(unloaded_marines.random)
-                else:
-                    self._mode = 3
+                self._mode = 3
+            else:
+                await pickup_micro(
+                    bot=self._bot_object,
+                    marines=unloaded_marines,
+                    medivacs=medivacs,
+                    endangered_marines_tags=endangered_marines_tags,
+                    target=self._target,
+                    retreat_point=self._retreat_point
+                )
+        elif self._mode == 3:
+            if unloaded_marines:
+                for medivac in medivacs:
+                    medivac.move(unloaded_marines.random)
+                for marine in unloaded_marines:
+                    closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
+                    marine.smart(closest_medivac.first)
+            else:
+                self._mode = 4
         else:
-            medivac.move(self._retreat_point)
+            for medivac in medivacs:
+                medivac.move(self._retreat_point)

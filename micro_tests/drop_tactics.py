@@ -87,7 +87,7 @@ class DropTacticsTest(sc2.BotAI):
 
                     self.waiting_army -= new_harass_group
 
-                    self.harass_groups.add(DropTactics(new_harass_marines, new_harass_medivacs, self.enemy_start_locations[0], self.start_location, self))
+                    self.harass_groups.add(DropTactics(new_harass_marines, new_harass_medivacs, self.enemy_start_locations[0], self.start_location, self, walk=False))
 
             for group in self.harass_groups:
                 await group.handle(self.units_by_tag)
