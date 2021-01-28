@@ -46,7 +46,6 @@ class DropTactics:
         self._retreat_point = retreat_point
         self._bot_object = bot_object
         self._mode = 2 if walk else 0
-        self._loaded = False
 
     @property
     def marine_tags(self) -> Units:
@@ -69,12 +68,6 @@ class DropTactics:
          - 4: Retreating
         """
         return self._mode
-
-    @property
-    def loaded(self) -> bool:
-        """ Returns True if the marines are loaded in the medivacs, False otherwise. """
-        # TODO: what if all the marines are dead?
-        return self._loaded
 
     async def handle(self, units_by_tag : Dict[int, Unit]):
         alive_medivac_tags = self._medivac_tags & units_by_tag.keys()
