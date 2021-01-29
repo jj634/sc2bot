@@ -116,6 +116,7 @@ class DropTactics:
             for medivac in medivacs:
                 target_proximity = medivac.distance_to(self._target)
                 if target_proximity <= self.EXPANSION_RADIUS:
+                    # TODO: make sure dropping at a valid location
                     if (medivac.is_moving):
                         medivac.stop()
                     else:
