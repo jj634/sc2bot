@@ -27,14 +27,16 @@ This bot tests medivac pickup micro.
 
 class DropTacticsTest(sc2.BotAI):
 
-    harass_groups : Set[DropTactics] = set()
-    waiting_army : Units = None
+    
     # size of harass groups in terms of number of medivacs. scales based on number of bases
     HARASS_SIZE = 1
 
     def __init__(self):
+        self.waiting_army : Units = None
         self.units_by_tag : Dict[int, Unit] = None
         self.enemy_expansions : List[Point2] = None
+        self.harass_groups : Set[DropTactics] = set()
+        self.harass_assignments : Dict[Point2, DropTactics] = None
 
     async def on_start(self):
         await self.client.debug_create_unit(
@@ -46,8 +48,10 @@ class DropTacticsTest(sc2.BotAI):
         await self.client.debug_control_enemy()
         await self.client.debug_fast_build()
         await self.client.debug_all_resources()
-        self.enemy_expansions = await get_enemy_expansions(self)
 
+        # TODO: add to this if another expansion encountered, eg a ninja base
+        self.enemy_expansions = await get_enemy_expansions(self, limit=8)
+        self.harass_assignments = {enemy_expo_p : None for enemy_expo_p in self.enemy_expansions}
 
     async def on_step(self, iteration):
         self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
@@ -100,15 +104,20 @@ class DropTacticsTest(sc2.BotAI):
 
                     self.waiting_army -= new_harass_group
 
-                    self.harass_groups.add(
-                        DropTactics(
+                    next_targets = list(filter(lambda p : self.harass_assignments[p] is None, self.enemy_expansions))
+                    if len(next_targets) > 0:
+                        new_drop_tactics = DropTactics(
                             marines=new_harass_marines,
                             medivacs=new_harass_medivacs,
-                            target=self.enemy_start_locations[0],
+                            target=next_targets[0],
                             retreat_point=self.start_location,
                             bot_object=self,
                             walk=False
-                        ))
+                        )
+
+                        self.harass_assignments[next_targets[0]] = new_drop_tactics
+                        self.harass_groups.add(new_drop_tactics)
+
 
             for group in self.harass_groups:
                 await group.handle(self.units_by_tag)
