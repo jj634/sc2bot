@@ -11,13 +11,14 @@ from sc2 import Race, Difficulty
 from sc2.player import Bot, Computer
 
 
-from typing import Dict, Set
+from typing import Dict, List, Set
 
 # TODO: figure out relative imports
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from routines.terran.drop_tactics import DropTactics
+from utils.expansions import get_enemy_expansions
 
 """
 This bot tests medivac pickup micro.
@@ -30,22 +31,34 @@ class DropTacticsTest(sc2.BotAI):
     waiting_army : Units = None
     # size of harass groups in terms of number of medivacs. scales based on number of bases
     HARASS_SIZE = 1
+
     def __init__(self):
         self.units_by_tag : Dict[int, Unit] = None
+        self.enemy_expansions : List[Point2] = None
 
     async def on_start(self):
         await self.client.debug_create_unit(
             [
-                [UnitTypeId.MEDIVAC, 1, self.start_location.towards(self.game_info.map_center, 15), 1],
-                [UnitTypeId.MARINE, 8, self.start_location.towards(self.game_info.map_center, 15), 1],
+                [UnitTypeId.MEDIVAC, 4, self.start_location.towards(self.game_info.map_center, 15), 1],
+                [UnitTypeId.MARINE, 32, self.start_location.towards(self.game_info.map_center, 15), 1],
             ]
         )
         await self.client.debug_control_enemy()
         await self.client.debug_fast_build()
         await self.client.debug_all_resources()
+        self.enemy_expansions = await get_enemy_expansions(self)
+
 
     async def on_step(self, iteration):
         self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
+
+        for expansion_i in range(len(self.enemy_expansions)):
+            self._client.debug_text_world(
+                text=f"{expansion_i} : {self.enemy_expansions[expansion_i]}",
+                pos=self.enemy_expansions[expansion_i],
+                color=(0, 255, 0),
+                size=12,
+            )
 
 
         if iteration == 1:
@@ -87,7 +100,15 @@ class DropTacticsTest(sc2.BotAI):
 
                     self.waiting_army -= new_harass_group
 
-                    self.harass_groups.add(DropTactics(new_harass_marines, new_harass_medivacs, self.enemy_start_locations[0], self.start_location, self, walk=False))
+                    self.harass_groups.add(
+                        DropTactics(
+                            marines=new_harass_marines,
+                            medivacs=new_harass_medivacs,
+                            target=self.enemy_start_locations[0],
+                            retreat_point=self.start_location,
+                            bot_object=self,
+                            walk=False
+                        ))
 
             for group in self.harass_groups:
                 await group.handle(self.units_by_tag)
@@ -98,8 +119,6 @@ class DropTacticsTest(sc2.BotAI):
                 self.waiting_army.append(unit)
             else:
                 self.waiting_army = Units([unit], self)
-        elif unit.type_id == UnitTypeId.REAPER:
-            self.reaper_created = True
 
 def main():
     sc2.run_game(

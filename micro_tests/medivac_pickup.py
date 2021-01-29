@@ -53,7 +53,15 @@ class MedivacPickup(sc2.BotAI):
             )
         
         if iteration == 2:
-            self.harass_groups.add(DropTactics(self.units(UnitTypeId.MARINE), self.units(UnitTypeId.MEDIVAC), self.enemy_start_locations[0], self.start_location, self, walk=True))
+            self.harass_groups.add(
+                DropTactics(
+                    marines=self.units(UnitTypeId.MARINE),
+                    medivacs=self.units(UnitTypeId.MEDIVAC),
+                    target=self.enemy_start_locations[0],
+                    retreat_point=self.start_location,
+                    bot_object=self,
+                    walk=True
+                ))
 
         if iteration > 2:
             depot = self.structures(UnitTypeId.SUPPLYDEPOT)

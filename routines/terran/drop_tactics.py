@@ -71,6 +71,12 @@ class DropTactics:
         return self._mode
 
     async def handle(self, units_by_tag : Dict[int, Unit]):
+        """
+        Controls the marines and medivacs in this drop, depending on the current mode.
+
+        :param units_by_tag:
+        """
+
         alive_medivac_tags = self._medivac_tags & units_by_tag.keys()
         medivacs : Units = Units({units_by_tag[m_tag] for m_tag in alive_medivac_tags}, self._bot_object)
         self._medivac_tags = alive_medivac_tags
@@ -141,10 +147,10 @@ class DropTactics:
                 enemy_dps += enemy_unit_dps
             
             own_dps = all_marines.first.ground_dps * all_marines.amount if all_marines else 0
-            print("own_dps: " + str(own_dps) + ", len: " + str(all_marines.amount))
-            print("enemy_dps: " + str(enemy_dps) + ", len: " + str(len(enemies_in_marines_range)))
+            # print("own_dps: " + str(own_dps) + ", len: " + str(all_marines.amount))
+            # print("enemy_dps: " + str(enemy_dps) + ", len: " + str(len(enemies_in_marines_range)))
             if enemy_dps > own_dps * 1.5:
-                print("too many")
+                # print("too many")
                 retreat = True
             
             if retreat:
