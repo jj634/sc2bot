@@ -10,7 +10,7 @@ from sc2.ids.upgrade_id import UpgradeId
 from sc2 import Race, Difficulty
 from sc2.player import Bot, Computer
 
-
+import itertools
 from typing import Dict, List, Set
 
 # TODO: figure out relative imports
@@ -31,7 +31,8 @@ class DropTacticsTest(sc2.BotAI):
     HARASS_SIZE = 1
 
     def __init__(self):
-        self.waiting_army : Units = None
+        self.waiting_marine_tags : Set[int] = set()
+        self.waiting_medivac_tags : Set[int] = set()
         self.units_by_tag : Dict[int, Unit] = None
         self.enemy_expansions : List[Point2] = None
         self.harass_groups : Set[DropTactics] = set()
@@ -50,6 +51,7 @@ class DropTacticsTest(sc2.BotAI):
 
         # TODO: add to this if another expansion encountered, eg a ninja base
         self.enemy_expansions = await get_expansions(self, limit=8, enemy=True)
+        self.own_expansions = await get_expansions(self, limit=8, enemy=False)
         self.harass_assignments = {enemy_expo_p : None for enemy_expo_p in self.enemy_expansions}
 
     async def on_step(self, iteration):
@@ -90,24 +92,21 @@ class DropTacticsTest(sc2.BotAI):
                 techlab.research(UpgradeId.STIMPACK)
 
             if self.already_pending_upgrade(UpgradeId.STIMPACK) > 0:
-                waiting_marines = self.waiting_army(UnitTypeId.MARINE).amount
-                waiting_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).amount
-
                 if (
-                    waiting_marines >= self.HARASS_SIZE * 8
-                    and waiting_medivacs >= self.HARASS_SIZE
+                    len(self.waiting_marine_tags) >= self.HARASS_SIZE * 8
+                    and len(self.waiting_medivac_tags) >= self.HARASS_SIZE
                 ):
-                    new_harass_marines = self.waiting_army(UnitTypeId.MARINE).take(self.HARASS_SIZE * 8)
-                    new_harass_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).take(self.HARASS_SIZE)
-                    new_harass_group = new_harass_marines + new_harass_medivacs
+                    new_harass_marine_tags = set(itertools.islice(self.waiting_marine_tags, self.HARASS_SIZE * 8))
+                    new_harass_medivac_tags = set(itertools.islice(self.waiting_medivac_tags, self.HARASS_SIZE))
 
-                    self.waiting_army -= new_harass_group
+                    self.waiting_marine_tags.difference_update(new_harass_marine_tags)
+                    self.waiting_medivac_tags.difference_update(new_harass_medivac_tags)
 
                     next_targets = list(filter(lambda p : self.harass_assignments[p] is None, self.enemy_expansions))
                     if len(next_targets) > 0:
                         new_drop_tactics = DropTactics(
-                            marines=new_harass_marines,
-                            medivacs=new_harass_medivacs,
+                            marine_tags=new_harass_marine_tags,
+                            medivac_tags=new_harass_medivac_tags,
                             target=next_targets[0],
                             retreat_point=self.start_location,
                             bot_object=self,
@@ -118,15 +117,27 @@ class DropTacticsTest(sc2.BotAI):
                         self.harass_groups.add(new_drop_tactics)
 
 
-            for group in self.harass_groups:
-                await group.handle(self.units_by_tag)
+                for group in self.harass_groups:
+                    await group.handle(self.units_by_tag)
+
+                alive_marine_tags = self.waiting_marine_tags & self.units_by_tag.keys()
+                alive_medivac_tags = self.waiting_medivac_tags & self.units_by_tag.keys()
+
+                waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in alive_marine_tags}, self)
+                waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in alive_medivac_tags}, self)
+
+                self.waiting_marine_tags = alive_marine_tags
+                self.waiting_medivac_tags = alive_medivac_tags
+
+                chill_spot = self.own_expansions[self.townhalls.amount > 0].towards(self.game_info.map_center, 10)
+                for unit in (waiting_marines + waiting_medivacs).filter(lambda u : u.distance_to(chill_spot) > 5):
+                    unit.attack(chill_spot)
 
     async def on_unit_created(self, unit: Unit):
-        if unit.type_id == UnitTypeId.MARINE or unit.type_id == UnitTypeId.MEDIVAC:
-            if self.waiting_army:
-                self.waiting_army.append(unit)
-            else:
-                self.waiting_army = Units([unit], self)
+        if unit.type_id == UnitTypeId.MARINE:
+            self.waiting_marine_tags.add(unit.tag)
+        elif unit.type_id == UnitTypeId.MEDIVAC:
+            self.waiting_medivac_tags.add(unit.tag)
 
 def main():
     sc2.run_game(
