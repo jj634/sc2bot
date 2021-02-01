@@ -334,8 +334,14 @@ class TOOBot(sc2.BotAI):
         for group in self.harass_groups:
             await group.handle(self.units_by_tag)
 
-        waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_marine_tags}, self)
-        waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_medivac_tags}, self)
+        alive_marine_tags = self.waiting_marine_tags & self.units_by_tag.keys()
+        alive_medivac_tags = self.waiting_medivac_tags & self.units_by_tag.keys()
+
+        waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in alive_marine_tags}, self)
+        waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in alive_medivac_tags}, self)
+
+        self.waiting_marine_tags = alive_marine_tags
+        self.waiting_medivac_tags = alive_medivac_tags
 
         chill_spot = self.own_expansions[self.townhalls.amount > 0].towards(self.game_info.map_center, 10)
         for unit in (waiting_marines + waiting_medivacs).filter(lambda u : u.distance_to(chill_spot) > 5):
