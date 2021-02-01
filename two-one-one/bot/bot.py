@@ -12,10 +12,12 @@ from sc2.ids.buff_id import BuffId
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
-from routines.terran.medivac_pickup import pickup_micro
 from routines.terran.depots_required import depots_required
+from routines.terran.drop_tactics import DropTactics
+from utils.expansions import get_expansions
 
-from typing import Set
+import itertools
+from typing import Dict, List, Set
 
 
 #  python .\two-one-one\run.py --Map "Acropolis LE" --ComputerDifficulty "Hard" --Realtime
@@ -35,12 +37,24 @@ class TOOBot(sc2.BotAI):
     # size of harass groups in terms of number of medivacs. scales based on number of bases
     HARASS_SIZE = 1
 
+    def __init__(self):
+        self.waiting_marine_tags : Set[int] = set()
+        self.waiting_medivac_tags : Set[int] = set()
+        self.units_by_tag : Dict[int, Unit] = None
+        self.enemy_expansions : List[Point2] = None
+        self.own_expansions : List[Point2] = None
+        self.harass_groups : Set[DropTactics] = set()
+        self.harass_assignments : Dict[Point2, DropTactics] = None
 
     async def on_start(self):
-        print("Game started")
-        # Do things here before the game starts
+        # TODO: add to this if another expansion encountered, eg a ninja base
+        self.enemy_expansions = await get_expansions(self, limit=8, enemy=True)
+        self.own_expansions = await get_expansions(self, limit=8, enemy=False)
+        self.harass_assignments = {enemy_expo_p : None for enemy_expo_p in self.enemy_expansions}
 
     async def on_step(self, iteration):
+        self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
+
         # above or below player_start_location, depending on spawn
         updown : Point2 = Point2((self.game_info.player_start_location.x, self.game_info.map_center.y))
         # to the left or right of player_start_location, depending on spawn
@@ -293,23 +307,39 @@ class TOOBot(sc2.BotAI):
 
         # harass
         if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
-            await pickup_micro(self)
-            waiting_marines = self.waiting_army(UnitTypeId.MARINE).amount
-            waiting_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).amount
-
             if (
-                waiting_marines >= self.HARASS_SIZE * 8
-                and waiting_medivacs >= self.HARASS_SIZE
+                len(self.waiting_marine_tags) >= self.HARASS_SIZE * 8
+                and len(self.waiting_medivac_tags) >= self.HARASS_SIZE
             ):
-                new_harass_marines = self.waiting_army(UnitTypeId.MARINE).take(self.HARASS_SIZE * 8)
-                new_harass_medivacs = self.waiting_army(UnitTypeId.MEDIVAC).take(self.HARASS_SIZE)
-                new_harass_group = new_harass_marines + new_harass_medivacs
+                new_harass_marine_tags = set(itertools.islice(self.waiting_marine_tags, self.HARASS_SIZE * 8))
+                new_harass_medivac_tags = set(itertools.islice(self.waiting_medivac_tags, self.HARASS_SIZE))
 
-                self.waiting_army -= new_harass_group
-                self.harass_groups.add(new_harass_group)
+                self.waiting_marine_tags.difference_update(new_harass_marine_tags)
+                self.waiting_medivac_tags.difference_update(new_harass_medivac_tags)
+
+                next_targets = list(filter(lambda p : self.harass_assignments[p] is None, self.enemy_expansions))
+                if len(next_targets) > 0:
+                    new_drop_tactics = DropTactics(
+                        marine_tags=new_harass_marine_tags,
+                        medivac_tags=new_harass_medivac_tags,
+                        target=next_targets[0],
+                        retreat_point=self.start_location,
+                        bot_object=self,
+                        walk=False
+                    )
+
+                    self.harass_assignments[next_targets[0]] = new_drop_tactics
+                    self.harass_groups.add(new_drop_tactics)
 
         for group in self.harass_groups:
+            await group.handle(self.units_by_tag)
 
+        waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_marine_tags}, self)
+        waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_medivac_tags}, self)
+
+        chill_spot = self.own_expansions[self.townhalls.amount > 0].towards(self.game_info.map_center, 10)
+        for unit in (waiting_marines + waiting_medivacs).filter(lambda u : u.distance_to(chill_spot) > 5):
+            unit.attack(chill_spot)
 
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
@@ -360,10 +390,9 @@ class TOOBot(sc2.BotAI):
 
     async def on_unit_created(self, unit: Unit):
         if unit.type_id == UnitTypeId.MARINE:
-            if self.waiting_army:
-                self.waiting_army.append(unit)
-            else:
-                self.waiting_army = Units({unit}, self)
+            self.waiting_marine_tags.add(unit.tag)
+        elif unit.type_id == UnitTypeId.MEDIVAC:
+            self.waiting_medivac_tags.add(unit.tag)
         elif unit.type_id == UnitTypeId.REAPER:
             self.reaper_created = True
 

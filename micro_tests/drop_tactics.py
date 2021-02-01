@@ -18,7 +18,7 @@ import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from routines.terran.drop_tactics import DropTactics
-from utils.expansions import get_enemy_expansions
+from utils.expansions import get_expansions
 
 """
 This bot tests medivac pickup micro.
@@ -26,7 +26,6 @@ This bot tests medivac pickup micro.
 
 
 class DropTacticsTest(sc2.BotAI):
-
     
     # size of harass groups in terms of number of medivacs. scales based on number of bases
     HARASS_SIZE = 1
@@ -50,7 +49,7 @@ class DropTacticsTest(sc2.BotAI):
         await self.client.debug_all_resources()
 
         # TODO: add to this if another expansion encountered, eg a ninja base
-        self.enemy_expansions = await get_enemy_expansions(self, limit=8)
+        self.enemy_expansions = await get_expansions(self, limit=8, enemy=True)
         self.harass_assignments = {enemy_expo_p : None for enemy_expo_p in self.enemy_expansions}
 
     async def on_step(self, iteration):

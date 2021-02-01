@@ -28,20 +28,20 @@ class DropTactics:
     MEDIVAC_LEASH = 2
     
 
-    def __init__(self, marines : Units, medivacs : Units, target : Point2, retreat_point : Point2, bot_object : BotAI, walk : bool = False):
+    def __init__(self, marine_tags : Units, medivac_tags : Units, target : Point2, retreat_point : Point2, bot_object : BotAI, walk : bool = False):
         """
-        :param marines:
-        :param medivacs:
+        :param marine_tags:
+        :param medivac_tags:
         :param target:
         :param bot_object:
         :param walk:
         """
-        assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
-        assert marines.amount == medivacs.amount * 8, "need " + str(medivacs.amount * 8) + " marines for " + str(medivacs.amount) + " medivacs"
+        # assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
+        # assert marines.amount == medivacs.amount * 8, "need " + str(medivacs.amount * 8) + " marines for " + str(medivacs.amount) + " medivacs"
 
         # cannot store unit objects because their distance_calculation_index changes on each iteration
-        self._marine_tags : Set[int] = marines.tags
-        self._medivac_tags : Set[int] = medivacs.tags
+        self._marine_tags : Set[int] = marine_tags
+        self._medivac_tags : Set[int] = medivac_tags
         self._target = target
         self._retreat_point = retreat_point
         self._bot_object = bot_object
@@ -90,14 +90,9 @@ class DropTactics:
 
         if self._mode == 0:
             if unloaded_marines: # load up all marines
-                medivac_cargos = {
-                    medivac : medivac.cargo_left for medivac in medivacs
-                }
                 for marine in unloaded_marines:
-                    free_medivacs = filter(lambda medivac : medivac_cargos[medivac] > 0, medivacs)
-                    closest_free_medivac = min((medivac for medivac in free_medivacs), key= lambda u : self._bot_object._distance_squared_unit_to_unit(u, marine))
-                    marine.smart(closest_free_medivac)
-                    medivac_cargos[closest_free_medivac] -= 1
+                    closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
+                    marine.smart(closest_medivac.first)
                 for medivac in medivacs:
                     medivac.move(unloaded_marines.random)
             else:

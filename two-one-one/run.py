@@ -128,7 +128,9 @@ def run():
         sc2.run_game(sc2.maps.get(args.Map),
                      [bot, Computer(Race[args.ComputerRace], Difficulty[args.ComputerDifficulty])],
                      realtime=args.Realtime,
-                     sc2_version=args.Sc2Version,)
+                     sc2_version=args.Sc2Version,
+                     save_replay_as="Example.SC2Replay",
+                     )
 
 
 # Start game
