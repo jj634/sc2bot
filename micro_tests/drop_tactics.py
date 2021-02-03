@@ -43,6 +43,7 @@ class DropTacticsTest(sc2.BotAI):
             [
                 [UnitTypeId.MEDIVAC, 4, self.start_location.towards(self.game_info.map_center, 15), 1],
                 [UnitTypeId.MARINE, 32, self.start_location.towards(self.game_info.map_center, 15), 1],
+                [UnitTypeId.MEDIVAC, 1, self.game_info.map_center, 2],
             ]
         )
         await self.client.debug_control_enemy()

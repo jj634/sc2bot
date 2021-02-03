@@ -13,6 +13,7 @@ import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from utils.distances import centroid
+from utils.distances import safe_side
 from routines.terran.medivac_pickup import pickup_micro
 
 
@@ -89,6 +90,7 @@ class DropTactics:
         self._marine_tags = alive_unloaded_marine_tags | loaded_marine_tags
 
         if self._mode == 0:
+            # idle
             if unloaded_marines: # load up all marines
                 for marine in unloaded_marines:
                     closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
@@ -121,7 +123,20 @@ class DropTactics:
                     and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                 ):
                     medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
+                if target_proximity > self.BOOST_RADIUS:
+                    enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : medivac.distance_to(e) < 10)
+                    enemies_in_range_dps = sum(e.calculate_dps_vs_target(medivac) for e in enemies_in_range)
+                    if enemies_in_range:
+                        if enemies_in_range_dps * 3 > medivac.health:
+                            self._mode = 4
+                        else:
+                            first_enemy = enemies_in_range.first.position
+                            enemy_vector = (first_enemy.x - medivac.position.x, first_enemy.y - medivac.position.y)
+                            safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
+                            medivac.move(medivac.position.towards(Point2(safe_point), 3))
+                            medivac.move(self._target, queue = True)
         if self._mode == 2:
+            # attacking
             retreat = False
 
             if not all_marines:
@@ -160,6 +175,7 @@ class DropTactics:
                     retreat_point=self._retreat_point
                 )
         if self._mode == 3:
+            # picking up to retreat
             if unloaded_marines:
                 for medivac in medivacs:
                     medivac.move(unloaded_marines.random)
@@ -169,6 +185,7 @@ class DropTactics:
             else:
                 self._mode = 4
         if self._mode == 4:
+            # retreating
             cargo_medivacs = medivacs.filter(lambda m : m.has_cargo)
             for medivac in medivacs:
                 if medivac.distance_to(self._retreat_point) < 5:
@@ -179,4 +196,6 @@ class DropTactics:
                         if medivac.is_moving:
                             medivac.hold_position()
                 else:
+                    if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                        medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                     medivac.move(self._retreat_point)
