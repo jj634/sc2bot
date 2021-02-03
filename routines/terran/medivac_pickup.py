@@ -70,7 +70,7 @@ async def pickup_micro(
         if medivac.has_cargo:
             # drop off at closest safe position
             medivac_endangered = bot.enemy_units.filter(lambda e : e.target_in_range(medivac))
-            if not medivac_endangered:
+            if not medivac_endangered and (await self._bot_object.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]:
                 # TODO: make sure location valid, and within expo radius
                 medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                 if medivac.is_moving:

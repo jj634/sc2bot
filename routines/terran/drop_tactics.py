@@ -112,7 +112,7 @@ class DropTactics:
             # TODO: just retreat if too many enemy units at target location
             for medivac in medivacs:
                 target_proximity = medivac.distance_to(self._target)
-                if target_proximity <= self.EXPANSION_RADIUS and (await self._bot_object.can_place(UnitTypeId.SUPPLYDEPOT, [medivac.position]))[0]:
+                if target_proximity <= self.EXPANSION_RADIUS and (await self._bot_object.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]:
                     # TODO: make sure dropping at a valid location
                     medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                     medivac.hold_position()
@@ -127,6 +127,8 @@ class DropTactics:
                     enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : medivac.distance_to(e) < 10)
                     enemies_in_range_dps = sum(e.calculate_dps_vs_target(medivac) for e in enemies_in_range)
                     if enemies_in_range:
+                        if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
+                            medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
                         if enemies_in_range_dps * 3 > medivac.health:
                             self._mode = 4
                         else:
