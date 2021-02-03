@@ -322,7 +322,7 @@ class TOOBot(sc2.BotAI):
                     new_drop_tactics = DropTactics(
                         marine_tags=new_harass_marine_tags,
                         medivac_tags=new_harass_medivac_tags,
-                        target=next_targets[0],
+                        targets=[next_targets[0]],
                         retreat_point=self.start_location,
                         bot_object=self,
                         walk=False

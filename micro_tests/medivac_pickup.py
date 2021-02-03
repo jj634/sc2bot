@@ -57,7 +57,7 @@ class MedivacPickup(sc2.BotAI):
                 DropTactics(
                     marines=self.units(UnitTypeId.MARINE),
                     medivacs=self.units(UnitTypeId.MEDIVAC),
-                    target=self.enemy_start_locations[0],
+                    targets=[self.enemy_start_locations[0]],
                     retreat_point=self.start_location,
                     bot_object=self,
                     walk=True

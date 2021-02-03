@@ -28,7 +28,7 @@ class DropTactics:
     MEDIVAC_LEASH = 2
     
 
-    def __init__(self, marine_tags : Units, medivac_tags : Units, target : Point2, retreat_point : Point2, bot_object : BotAI, walk : bool = False):
+    def __init__(self, marine_tags : Units, medivac_tags : Units, targets : List[Point2], retreat_point : Point2, bot_object : BotAI, walk : bool = False):
         """
         :param marine_tags:
         :param medivac_tags:
@@ -42,7 +42,9 @@ class DropTactics:
         # cannot store unit objects because their distance_calculation_index changes on each iteration
         self._marine_tags : Set[int] = marine_tags
         self._medivac_tags : Set[int] = medivac_tags
-        self._target = target
+        # self._target = target
+        self._targets : List[Point2] = targets + [bot_object.enemy_start_locations[0]]
+        self._current_target_i : int = 0
         self._retreat_point = retreat_point
         self._bot_object = bot_object
         self._mode = 2 if walk else 0
@@ -104,13 +106,13 @@ class DropTactics:
                         medivac.move(medivac_centroid)
                 else: # move medivacs to target
                     for medivac in medivacs:
-                        medivac.move(self._target)
+                        medivac.move(self._targets[self._current_target_i])
                     self._mode = 1
         if self._mode == 1:
             # en route to enemy base. constantly boost when possible and outside of BOOST_SAVE_RADIUS
             # TODO: just retreat if too many enemy units at target location
             for medivac in medivacs:
-                target_proximity = medivac.distance_to(self._target)
+                target_proximity = medivac.distance_to(self._targets[self._current_target_i])
                 enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : medivac.distance_to(e) < 10)
                 if target_proximity <= self.BOOST_RADIUS:
                     enemies_in_range_dps = sum(e.calculate_dps_vs_target(medivac) for e in enemies_in_range)
@@ -136,7 +138,7 @@ class DropTactics:
                     safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
 
                     medivac.move(medivac.position.towards(Point2(safe_point), 3))
-                    medivac.move(self._target, queue = True)
+                    medivac.move(self._targets[self._current_target_i], queue = True)
         if self._mode == 2:
             # attacking
             retreat = False
@@ -148,7 +150,7 @@ class DropTactics:
             enemies_in_marines_range : Set[Unit] = set()
 
             for marine in unloaded_marines:
-                enemies_in_range = self._bot_object.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine, bonus_distance = 5))
+                enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine, bonus_distance = 5))
                 if enemies_in_range:
                     enemies_in_marines_range |= set(enemies_in_range)
                     endangered_marines_tags.add(marine.tag)
@@ -173,7 +175,7 @@ class DropTactics:
                     marines=unloaded_marines,
                     medivacs=medivacs,
                     endangered_marines_tags=endangered_marines_tags,
-                    target=self._target,
+                    target=self._targets[self._current_target_i],
                     retreat_point=self._retreat_point
                 )
         if self._mode == 3:
