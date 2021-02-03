@@ -6,7 +6,7 @@ from sc2.ids.unit_typeid import UnitTypeId
 from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
-from typing import Dict, Set, Union
+from typing import Dict, List, Set, Union
 
 # TODO: figure out relative imports
 import sys
@@ -150,7 +150,7 @@ class DropTactics:
             enemies_in_marines_range : Set[Unit] = set()
 
             for marine in unloaded_marines:
-                enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine, bonus_distance = 5))
+                enemies_in_range = self._bot_object.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine, bonus_distance = 2))
                 if enemies_in_range:
                     enemies_in_marines_range |= set(enemies_in_range)
                     endangered_marines_tags.add(marine.tag)
@@ -167,6 +167,13 @@ class DropTactics:
                 # print("too many")
                 retreat = True
             
+            enemy_units_in_expo = self._bot_object.all_enemy_units.filter(lambda u : self._targets[self._current_target_i].distance_to(u) <= self.EXPANSION_RADIUS)
+            deployed_marines = unloaded_marines.filter(lambda m : self._targets[self._current_target_i].distance_to(m) <= 10)
+            if not enemy_units_in_expo and deployed_marines.amount == len(self._marine_tags):
+                # no more units / structures remaining at this location;
+                # move on to next target
+                self._current_target_i = min(self._current_target_i + 1, len(self._targets) - 1)
+
             if retreat:
                 self._mode = 3
             else:
@@ -194,6 +201,7 @@ class DropTactics:
             for medivac in medivacs:
                 if medivac.distance_to(self._retreat_point) < 5:
                     if not cargo_medivacs:
+                        self._current_target_i = 0
                         self._mode = 2 if self._walk else 0
                     else:
                         medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
