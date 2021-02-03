@@ -148,7 +148,7 @@ class DropTactics:
             enemies_in_marines_range : Set[Unit] = set()
 
             for marine in unloaded_marines:
-                enemies_in_range = self._bot_object.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine))
+                enemies_in_range = self._bot_object.enemy_units.filter(lambda e : e.type_id != UnitTypeId.SCV and e.target_in_range(marine, bonus_distance = 5))
                 if enemies_in_range:
                     enemies_in_marines_range |= set(enemies_in_range)
                     endangered_marines_tags.add(marine.tag)
@@ -200,4 +200,14 @@ class DropTactics:
                 else:
                     if not medivac.has_buff(BuffId.MEDIVACSPEEDBOOST) and await self._bot_object.can_cast(medivac,AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS):
                         medivac(AbilityId.EFFECT_MEDIVACIGNITEAFTERBURNERS)
-                    medivac.move(self._retreat_point)
+                    
+                    enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : e.target_in_range(medivac, bonus_distance = 3))
+                    if enemies_in_range:
+                        first_enemy = enemies_in_range.first.position
+                        enemy_vector = (first_enemy.x - medivac.position.x, first_enemy.y - medivac.position.y)
+                        safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
+
+                        medivac.move(medivac.position.towards(Point2(safe_point), 3))
+                        medivac.move(self._retreat_point, queue = True)
+                    else:
+                        medivac.move(self._retreat_point)
