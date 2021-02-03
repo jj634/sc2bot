@@ -31,13 +31,11 @@ class TOOBot(sc2.BotAI):
     NAME: str = "211-bot"
     RACE: Race = Race.Terran
 
-    reaper_created = False
-    harass_groups : Set[Units] = set()
-    waiting_army : Units = None
     # size of harass groups in terms of number of medivacs. scales based on number of bases
     HARASS_SIZE = 1
 
     def __init__(self):
+        self.reaper_created : bool = False
         self.waiting_marine_tags : Set[int] = set()
         self.waiting_medivac_tags : Set[int] = set()
         self.units_by_tag : Dict[int, Unit] = None
@@ -316,7 +314,6 @@ class TOOBot(sc2.BotAI):
 
                 self.waiting_marine_tags.difference_update(new_harass_marine_tags)
                 self.waiting_medivac_tags.difference_update(new_harass_medivac_tags)
-
                 next_targets = list(filter(lambda p : self.harass_assignments[p] is None, self.enemy_expansions))
                 if len(next_targets) > 0:
                     new_drop_tactics = DropTactics(

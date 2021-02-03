@@ -37,7 +37,9 @@ class DropTactics:
         :param walk:
         """
         # assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
-        # assert marines.amount == medivacs.amount * 8, "need " + str(medivacs.amount * 8) + " marines for " + str(medivacs.amount) + " medivacs"
+        assert len(medivac_tags) > 0, "need to have at least 1 medivac"
+        assert len(marine_tags) == len(medivac_tags) * 8, f"need {len(medivac_tags) * 8} marines for {len(medivac_tags)} medivacs"
+
 
         # cannot store unit objects because their distance_calculation_index changes on each iteration
         self._marine_tags : Set[int] = marine_tags
@@ -95,7 +97,8 @@ class DropTactics:
             if unloaded_marines: # load up all marines
                 for marine in unloaded_marines:
                     closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
-                    marine.smart(closest_medivac.first)
+                    if closest_medivac:
+                        marine.smart(closest_medivac.first)
                 for medivac in medivacs:
                     medivac.move(unloaded_marines.random)
             else:
