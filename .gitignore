@@ -137,3 +137,5 @@ dmypy.json
 
 # VSCode
 .vscode/
+
+*.SC2Replay
