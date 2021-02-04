@@ -55,8 +55,8 @@ class MedivacPickup(sc2.BotAI):
         if iteration == 2:
             self.harass_groups.add(
                 DropTactics(
-                    marines=self.units(UnitTypeId.MARINE),
-                    medivacs=self.units(UnitTypeId.MEDIVAC),
+                    marine_tags=self.units(UnitTypeId.MARINE).tags,
+                    medivac_tags=self.units(UnitTypeId.MEDIVAC).tags,
                     targets=[self.enemy_start_locations[0]],
                     retreat_point=self.start_location,
                     bot_object=self,

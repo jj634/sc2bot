@@ -144,6 +144,7 @@ class DropTactics:
                     medivac.move(self._targets[self._current_target_i], queue = True)
         if self._mode == 2:
             # attacking
+            # TODO: add "wander" mechanics to find structures at edges of base
             retreat = False
 
             if not all_marines:
@@ -195,7 +196,8 @@ class DropTactics:
                     medivac.move(unloaded_marines.random)
                 for marine in unloaded_marines:
                     closest_medivac = medivacs.filter(lambda m : m.cargo_left > 0).sorted(key = lambda m : m.distance_to(marine))
-                    marine.smart(closest_medivac.first)
+                    if closest_medivac:
+                        marine.smart(closest_medivac.first)
             else:
                 self._mode = 4
         if self._mode == 4:
