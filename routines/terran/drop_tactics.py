@@ -164,6 +164,7 @@ class DropTactics:
                 enemy_unit_dps = enemy_unit.calculate_dps_vs_target(unloaded_marines.first) if unloaded_marines else enemy_unit.ground_dps
                 enemy_dps += enemy_unit_dps
             
+            # TODO: make this more accurate
             own_dps = all_marines.first.ground_dps * all_marines.amount if all_marines else 0
             # print("own_dps: " + str(own_dps) + ", len: " + str(all_marines.amount))
             # print("enemy_dps: " + str(enemy_dps) + ", len: " + str(len(enemies_in_marines_range)))

@@ -35,7 +35,6 @@ class TOOBot(sc2.BotAI):
     HARASS_SIZE = 1
 
     def __init__(self):
-        self.reaper_created : bool = False
         self.waiting_marine_tags : Set[int] = set()
         self.waiting_medivac_tags : Set[int] = set()
         self.units_by_tag : Dict[int, Unit] = None
@@ -89,13 +88,15 @@ class TOOBot(sc2.BotAI):
             return
 
 
-        # 14 depot
+# rax, refinery, orbital, reactor, expo, depot, second rax, ebay, factory, second gas, planetary, tech lab, stim, depot, starport, factory reactor, another 2 depots right after previous one, switch star/fac, double medi
+
+        # depot
         if (
             num_depots + pending_depots == 0
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near = self.start_location.towards(updown, 3))
 
-        # 15 barracks
+        # barracks
         if (
             self.tech_requirement_progress(UnitTypeId.BARRACKS) == 1
             and num_barracks + pending_barracks == 0
@@ -103,7 +104,7 @@ class TOOBot(sc2.BotAI):
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near = self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
-        # 16 refinery
+        # refinery
         if (
             num_barracks == 1
             and num_refineries + pending_refineries == 0
@@ -114,7 +115,7 @@ class TOOBot(sc2.BotAI):
             if unrefined_vg:
                 await self.build(UnitTypeId.REFINERY, near=unrefined_vg)
 
-        # 19 orbital command
+        # orbital command
         idle_cc = self.structures(UnitTypeId.COMMANDCENTER).idle
         if (
             self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
@@ -122,53 +123,57 @@ class TOOBot(sc2.BotAI):
         ):
             idle_cc.first.build(UnitTypeId.ORBITALCOMMAND)
 
-        # 19 reaper
-        # TODO: skip reaper
-        barrack = self.structures(UnitTypeId.BARRACKS).ready
-        if (
-            self.already_pending(UnitTypeId.ORBITALCOMMAND) > 0
-            and barrack 
-            and self.units(UnitTypeId.REAPER).amount + self.already_pending(UnitTypeId.REAPER) == 0
-            and not self.reaper_created
+        # barracks reactor
+        if  (
+            self.already_pending(UnitTypeId.ORBITALCOMMAND) == 1
+            and len(self.reactor_tags) + self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
+            and solo_barracks.amount == 1
         ):
-            barrack.first.train(UnitTypeId.REAPER)
+            solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
 
-        # 20 expand
+        # expand
+        # TODO: if blocked, make in base and lift to correct spot
         if (
-            self.already_pending(UnitTypeId.REAPER) > 0
+            self.already_pending(UnitTypeId.BARRACKSREACTOR) == 1
             and self.townhalls.amount + self.already_pending(UnitTypeId.COMMANDCENTER) == 1
         ):
             await self.expand_now()
 
-        # 20 second barracks
+        # second barracks
         if (
-            self.already_pending(UnitTypeId.COMMANDCENTER) > 0
+            self.already_pending(UnitTypeId.COMMANDCENTER) == 1
             and num_barracks + pending_barracks == 1
         ):
             # TODO: check that this does not block the first barrack's addon location
             pos : Point2 = await self.find_placement(UnitTypeId.BARRACKS,near=self.start_location.towards(self.game_info.map_center, 15), addon_place = True)
             await self.build(UnitTypeId.BARRACKS, near=pos)
 
-        # 21 barracks reactor
-        if  (
-            pending_barracks == 1
-            and len(self.reactor_tags) + self.already_pending(UnitTypeId.BARRACKSREACTOR) == 0
-            and self.reaper_created
-            and solo_barracks
-        ):
-            solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
-
-        if (self.structures(UnitTypeId.ORBITALCOMMAND).ready):
-            await self.train_workers()
-
-        # 22 depot
+        # depot
         if (
-            self.already_pending(UnitTypeId.BARRACKSREACTOR) == 1
+            num_barracks == 1 and pending_barracks == 1
             and num_depots + pending_depots == 1
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
-        # 22 refinery
+        # ebay
+        if (
+            num_depots == 1 and pending_depots == 1
+            and self.structures(UnitTypeId.ENGINEERINGBAY).ready.amount + self.already_pending(UnitTypeId.ENGINEERINGBAY) == 0
+        ):
+            center_vector = (self.game_info.map_center.x - self.start_location.x, self.game_info.map_center.y - self.start_location.y)
+            build_direction = (self.start_location.x - center_vector[0], self.start_location.y - center_vector[1])
+            await self.build(UnitTypeId.ENGINEERINGBAY, near= self.start_location.towards(Point2(build_direction), 10))
+
+        # factory
+        if (
+            num_refineries == 2
+            and self.tech_requirement_progress(UnitTypeId.FACTORY) == 1
+            and num_factories + pending_factories + self.structures(UnitTypeId.FACTORYFLYING).amount == 0
+        ):
+            pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
+            await self.build(UnitTypeId.FACTORY, near=pos)
+
+        # second gas
         if (
             pending_depots == 1
             and num_refineries + pending_refineries == 1
@@ -178,15 +183,6 @@ class TOOBot(sc2.BotAI):
             unrefined_vg = self.vespene_geyser.closer_than(10, self.start_location).filter(vg_filter).random_or(None)
             if unrefined_vg:
                 await self.build(UnitTypeId.REFINERY, near=unrefined_vg)
-
-        # 23 factory
-        if (
-            num_refineries == 2
-            and self.tech_requirement_progress(UnitTypeId.FACTORY) == 1
-            and num_factories + pending_factories + self.structures(UnitTypeId.FACTORYFLYING).amount == 0
-        ):
-            pos : Point2 = await self.find_placement(UnitTypeId.FACTORY,near=self.start_location.towards(leftright, 5), addon_place = True)
-            await self.build(UnitTypeId.FACTORY, near=pos)
 
         # 26 barracks tech lab
         if (
@@ -359,18 +355,19 @@ class TOOBot(sc2.BotAI):
             # TODO: set rally, distribute workers to expo
             scv.gather(self.mineral_field.closest_to(self.start_location))
 
+        await self.train_workers()
+
     async def train_workers(self):
         """
         Continuously trains workers until every base has 22 workers.
         """
         # a random idle cc, or None if no idle cc's
-        cc = self.townhalls(UnitTypeId.ORBITALCOMMAND).idle.random_or(None)
+        idle_cc = self.townhalls({UnitTypeId.ORBITALCOMMAND, UnitTypeId.PLANETARYFORTRESS}).idle.random_or(None)
         if (
-            cc and
-            self.can_afford(UnitTypeId.SCV) and
-            self.supply_workers + self.already_pending(UnitTypeId.SCV) < self.townhalls.amount * 22
+            idle_cc
+            and self.supply_workers + self.already_pending(UnitTypeId.SCV) < self.townhalls.amount * 22
         ):
-            cc.train(UnitTypeId.SCV)
+            idle_cc.train(UnitTypeId.SCV)
 
 
     async def train_workers_until(self, until_supply: int):
@@ -392,8 +389,6 @@ class TOOBot(sc2.BotAI):
             self.waiting_marine_tags.add(unit.tag)
         elif unit.type_id == UnitTypeId.MEDIVAC:
             self.waiting_medivac_tags.add(unit.tag)
-        elif unit.type_id == UnitTypeId.REAPER:
-            self.reaper_created = True
 
     async def on_end(self, result):
         print("Game ended.")
