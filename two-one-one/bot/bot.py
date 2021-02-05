@@ -58,40 +58,36 @@ class TOOBot(sc2.BotAI):
         # to the left or right of player_start_location, depending on spawn
         leftright : Point2 = Point2((self.game_info.map_center.x, self.game_info.player_start_location.y))
 
-        # If we don't have a townhall anymore, send all units to attack
-        if not self.townhalls.ready:
-            print("no ccs!")
-            target: Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
-            for unit in self.units():
-                unit.attack(target)
-            return
-
-
-        # Build order begins
-
-        finished_depots = self.structures(
+        num_depots = self.structures(
             {UnitTypeId.SUPPLYDEPOT, UnitTypeId.SUPPLYDEPOTLOWERED, UnitTypeId.SUPPLYDEPOTDROP}
         ).ready.amount
-
-        num_depots = self.structures(UnitTypeId.SUPPLYDEPOT).amount
         pending_depots = self.already_pending(UnitTypeId.SUPPLYDEPOT)
 
-        num_barracks = self.structures(UnitTypeId.BARRACKS).amount
+        num_barracks = self.structures(UnitTypeId.BARRACKS).ready.amount
         pending_barracks = self.already_pending(UnitTypeId.BARRACKS)
 
-        num_factories = self.structures(UnitTypeId.FACTORY).amount
+        num_factories = self.structures(UnitTypeId.FACTORY).ready.amount
         pending_factories = self.already_pending(UnitTypeId.FACTORY)
 
-        num_starports = self.structures(UnitTypeId.STARPORT).amount
+        num_starports = self.structures(UnitTypeId.STARPORT).ready.amount
         pending_starports = self.already_pending(UnitTypeId.STARPORT)
 
-        num_refineries = self.gas_buildings.amount
+        num_refineries = self.gas_buildings.ready.amount
         pending_refineries = self.already_pending(UnitTypeId.REFINERY)
 
         solo_barracks = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
 
         await self.train_workers_until(19)
         # TODO: make sure that the build doesn't continue in the middle later on in the game
+
+        if not self.townhalls.ready:
+            if not self.units:
+                await self.chat_send("(pineapple)")
+            target : Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
+            for unit in self.units():
+                unit.attack(target)
+            return
+
 
         # 14 depot
         if (
