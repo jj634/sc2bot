@@ -15,6 +15,7 @@ sys.path.append(".") # Adds higher directory to python modules path.
 from routines.terran.depots_required import depots_required
 from routines.terran.drop_tactics import DropTactics
 from utils.expansions import get_expansions
+from utils.workers_building import workers_building
 
 import itertools
 from typing import Dict, List, Set
@@ -60,19 +61,22 @@ class TOOBot(sc2.BotAI):
         num_depots = self.structures(
             {UnitTypeId.SUPPLYDEPOT, UnitTypeId.SUPPLYDEPOTLOWERED, UnitTypeId.SUPPLYDEPOTDROP}
         ).ready.amount
-        pending_depots = self.already_pending(UnitTypeId.SUPPLYDEPOT)
+        pending_depots = workers_building(self, UnitTypeId.SUPPLYDEPOT)
 
         num_barracks = self.structures(UnitTypeId.BARRACKS).ready.amount
-        pending_barracks = self.already_pending(UnitTypeId.BARRACKS)
+        pending_barracks = workers_building(self, UnitTypeId.BARRACKS)
 
         num_factories = self.structures(UnitTypeId.FACTORY).ready.amount
-        pending_factories = self.already_pending(UnitTypeId.FACTORY)
+        pending_factories = workers_building(self, UnitTypeId.FACTORY)
 
         num_starports = self.structures(UnitTypeId.STARPORT).ready.amount
-        pending_starports = self.already_pending(UnitTypeId.STARPORT)
+        pending_starports = workers_building(self, UnitTypeId.STARPORT)
 
         num_refineries = self.gas_buildings.ready.amount
-        pending_refineries = self.already_pending(UnitTypeId.REFINERY)
+        pending_refineries = workers_building(self, UnitTypeId.REFINERY)
+
+        num_ebays = self.structures(UnitTypeId.ENGINEERINGBAY).ready.amount
+        pending_ebays = workers_building(self, UnitTypeId.ENGINEERINGBAY)
 
         solo_barracks = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
 
@@ -106,7 +110,7 @@ class TOOBot(sc2.BotAI):
 
         # refinery
         if (
-            num_barracks == 1
+            pending_barracks == 1
             and num_refineries + pending_refineries == 0
         ):
             # TODO: could be taken by enemy refinery
@@ -119,6 +123,7 @@ class TOOBot(sc2.BotAI):
         idle_cc = self.structures(UnitTypeId.COMMANDCENTER).idle
         if (
             self.tech_requirement_progress(UnitTypeId.ORBITALCOMMAND) == 1
+            and self.structures(UnitTypeId.ORBITALCOMMAND).amount == 0
             and idle_cc and not idle_cc.first.is_transforming
         ):
             idle_cc.first.build(UnitTypeId.ORBITALCOMMAND)
@@ -151,6 +156,7 @@ class TOOBot(sc2.BotAI):
         # depot
         if (
             num_barracks == 1 and pending_barracks == 1
+            and self.already_pending(UnitTypeId.COMMANDCENTER) == 1
             and num_depots + pending_depots == 1
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
@@ -158,7 +164,7 @@ class TOOBot(sc2.BotAI):
         # ebay
         if (
             num_depots == 1 and pending_depots == 1
-            and self.structures(UnitTypeId.ENGINEERINGBAY).ready.amount + self.already_pending(UnitTypeId.ENGINEERINGBAY) == 0
+            and num_ebays + pending_ebays == 0
         ):
             center_vector = (self.game_info.map_center.x - self.start_location.x, self.game_info.map_center.y - self.start_location.y)
             build_direction = (self.start_location.x - center_vector[0], self.start_location.y - center_vector[1])
@@ -166,7 +172,7 @@ class TOOBot(sc2.BotAI):
 
         # factory
         if (
-            num_refineries == 2
+            num_ebays == 0 and pending_ebays == 1
             and self.tech_requirement_progress(UnitTypeId.FACTORY) == 1
             and num_factories + pending_factories + self.structures(UnitTypeId.FACTORYFLYING).amount == 0
         ):
@@ -175,8 +181,8 @@ class TOOBot(sc2.BotAI):
 
         # second gas
         if (
-            pending_depots == 1
-            and num_refineries + pending_refineries == 1
+            num_factories == 0 and pending_factories == 1
+            and num_refineries == 1 and pending_refineries == 0
         ):
             # TODO: could be taken by enemy refinery
             vg_filter = lambda vg : all(vg.distance_to(refinery) > 3 for refinery in self.gas_buildings)
@@ -184,14 +190,22 @@ class TOOBot(sc2.BotAI):
             if unrefined_vg:
                 await self.build(UnitTypeId.REFINERY, near=unrefined_vg)
 
-        # 26 barracks tech lab
+        # planetary
         if (
-            pending_factories == 1
+            self.structures(UnitTypeId.ORBITALCOMMAND).amount == 1
+            and self.tech_requirement_progress(UnitTypeId.PLANETARYFORTRESS) == 1
+            and idle_cc and not idle_cc.first.is_transforming
+        ):
+            idle_cc.first.build(UnitTypeId.PLANETARYFORTRESS)
+
+        # barracks tech lab
+        if (
+            self.already_pending(UnitTypeId.PLANETARYFORTRESS) == 1
             and self.already_pending_upgrade(UpgradeId.STIMPACK) == 0
             and self.already_pending(UnitTypeId.BARRACKSTECHLAB) == 0
+            and solo_barracks
         ):
-            if solo_barracks:
-                solo_barracks.first.build(UnitTypeId.BARRACKSTECHLAB)
+            solo_barracks.first.build(UnitTypeId.BARRACKSTECHLAB)
 
         # constantly produce marines
         # TODO: when loaded in medivacs, the number of marines decreases
@@ -199,9 +213,7 @@ class TOOBot(sc2.BotAI):
             if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
                 barrack.train(UnitTypeId.MARINE)
 
-        # 27 orbital on expo
-
-        # 28 stim
+        # stim
         techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
         if (
             techlab_rax
@@ -210,7 +222,14 @@ class TOOBot(sc2.BotAI):
             techlab = self.structures.find_by_tag(tag = techlab_rax.add_on_tag)
             techlab.research(UpgradeId.STIMPACK)
 
-        # 32 starport
+        # depot
+        if (
+            self.already_pending_upgrade(UpgradeId.STIMPACK) > 0
+            and num_depots == 2 and pending_depots == 0
+        ):
+            await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
+
+        # starport
         if (
             num_starports + pending_starports == 0
             and not self.structures(UnitTypeId.STARPORTFLYING)
@@ -220,7 +239,7 @@ class TOOBot(sc2.BotAI):
                 # TODO: this uses find_placement internally, so use something else
                 await self.build(UnitTypeId.STARPORT, near=pos)
 
-        # 32 factory reactor
+        # factory reactor
         if (
             pending_starports == 1
             and len(self.reactor_tags) + self.already_pending(UnitTypeId.FACTORYREACTOR) == 1
@@ -230,15 +249,17 @@ class TOOBot(sc2.BotAI):
                 # TODO: check if addon location is valid
                 factory.build(UnitTypeId.FACTORYREACTOR)
 
-        # 37 depot
+        # depot
         if (
             len(self.reactor_tags) == 2
-            and num_depots == 2
+            and num_depots == 3 and pending_depots == 0
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
-        # 40 depot
-        if num_depots + pending_depots == 3:
+        # depot
+        if (
+            num_depots == 4 and pending_depots == 0
+        ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.towards(updown, 3))
 
         # switch factory and starport
@@ -265,8 +286,8 @@ class TOOBot(sc2.BotAI):
 
         # continually build depots
         if (
-            num_depots > 3
-            and (await depots_required(self)) > finished_depots + pending_depots
+            num_depots > 5
+            and (await depots_required(self)) > num_depots + pending_depots
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
 
