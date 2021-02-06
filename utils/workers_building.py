@@ -1,3 +1,5 @@
+# this code is adapted from bot_ai/already_pending
+
 import sc2
 from sc2.cache import property_cache_once_per_frame_no_copy
 from sc2.bot_ai import BotAI

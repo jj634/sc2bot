@@ -16,6 +16,7 @@ from routines.terran.depots_required import depots_required
 from routines.terran.drop_tactics import DropTactics
 from utils.expansions import get_expansions
 from utils.workers_building import workers_building
+from utils.distribute_workers import distribute_workers
 
 import itertools
 from typing import Dict, List, Set
@@ -366,16 +367,7 @@ class TOOBot(sc2.BotAI):
                 mf: Unit = max(mfs, key=lambda x: x.mineral_contents)
                 oc(AbilityId.CALLDOWNMULE_CALLDOWNMULE, mf)
 
-        # TODO: improve this, see why distribute_workers doesn't work
-        # await self.distribute_workers()
-        for a in self.gas_buildings:
-            if a.assigned_harvesters < a.ideal_harvesters:
-                w = self.workers.closer_than(20, a)
-                if w:
-                    w.random.gather(a)
-        for scv in self.workers.idle:
-            # TODO: set rally, distribute workers to expo
-            scv.gather(self.mineral_field.closest_to(self.start_location))
+        await distribute_workers(self)
 
         await self.train_workers()
 
