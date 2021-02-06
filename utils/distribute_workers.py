@@ -56,6 +56,20 @@ async def distribute_workers(bot_object : BotAI):
             if any(mineral.distance_to(base) <= 8 for base in bot_object.townhalls.ready)
         ]
 
+    deficit_geysers = filter(lambda m : m.has_vespene, deficit_mining_places)
+    if deficit_geysers:
+        mineral_workers = bot_object.workers.filter(lambda w : w.order_target in bot_object.mineral_field.tags or w.is_carrying_minerals)
+        gas_worker_pool = worker_pool if worker_pool else mineral_workers
+        for deficit_geyser in deficit_geysers:
+            best_worker = min(gas_worker_pool, key = lambda w : w.distance_to(deficit_geyser))
+            gas_worker_pool.remove(best_worker)
+            if best_worker in worker_pool:
+                worker_pool.remove(best_worker)
+            if best_worker.is_carrying_minerals:
+                best_worker.gather(deficit_geyser, queue = True)
+            else:
+                best_worker.gather(deficit_geyser)
+
     # distribute every worker in the pool
     for worker in worker_pool:
         # as long as have workers and mining places
@@ -65,7 +79,7 @@ async def distribute_workers(bot_object : BotAI):
             # remove it from the list
             deficit_mining_places.remove(current_place)
             # if current place is a gas extraction site, go there
-            if current_place.vespene_contents:
+            if current_place.has_vespene:
                 worker.gather(current_place)
             # if current place is a gas extraction site,
             # go to the mineral field that is near and has the most minerals left

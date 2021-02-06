@@ -43,7 +43,7 @@ class TOOBot(sc2.BotAI):
         self.enemy_expansions : List[Point2] = None
         self.own_expansions : List[Point2] = None
         self.harass_groups : Set[DropTactics] = set()
-        self.harass_assignments : Dict[Point2, DropTactics] = None
+        self.harass_assignments : Dict[Point2, List[DropTactics]] = None
 
     async def on_start(self):
         # TODO: add to this if another expansion encountered, eg a ninja base
