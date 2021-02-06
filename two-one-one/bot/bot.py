@@ -213,7 +213,7 @@ class TOOBot(sc2.BotAI):
             if len(barrack.orders) < 1 + int(barrack.add_on_tag in self.reactor_tags):
                 barrack.train(UnitTypeId.MARINE)
 
-        # stim
+        # stim check before star
         techlab_rax = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : b.has_techlab).random_or(None)
         if (
             techlab_rax
@@ -231,7 +231,8 @@ class TOOBot(sc2.BotAI):
 
         # starport
         if (
-            num_starports + pending_starports == 0
+            self.already_pending_upgrade(UpgradeId.STIMPACK) > 0
+            and num_starports + pending_starports == 0
             and not self.structures(UnitTypeId.STARPORTFLYING)
         ):
             if self.tech_requirement_progress(UnitTypeId.STARPORT) == 1:
@@ -286,7 +287,7 @@ class TOOBot(sc2.BotAI):
 
         # continually build depots
         if (
-            num_depots > 5
+            num_depots >= 5
             and (await depots_required(self)) > num_depots + pending_depots
         ):
             await self.build(UnitTypeId.SUPPLYDEPOT, near= self.start_location.position.towards(updown, 3))
@@ -317,7 +318,7 @@ class TOOBot(sc2.BotAI):
             solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
 
         # harass
-        if self.already_pending_upgrade(UpgradeId.STIMPACK) == 1:
+        if self.already_pending_upgrade(UpgradeId.STIMPACK) >= 0.9:
             if (
                 len(self.waiting_marine_tags) >= self.HARASS_SIZE * 8
                 and len(self.waiting_medivac_tags) >= self.HARASS_SIZE
