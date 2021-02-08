@@ -12,23 +12,21 @@ from typing import Dict, List, Set, Union
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
+from .tactics import Tactics
 from utils.distances import centroid
 from routines.terran.medivac_pickup import pickup_micro
 
 
 
-class DropTactics:
+class DropTactics(Tactics):
 
     # medivacs can travel approx 31.72 during boost,
     # and approx 63.77 between boosts (unupgraded)
     EXPANSION_RADIUS = 15
     BOOST_RADIUS = EXPANSION_RADIUS + 16
-    BOOST_SAVE_RADIUS = BOOST_RADIUS + 64
+    BOOST_SAVE_RADIUS = BOOST_RADIUS + 64    
 
-    MEDIVAC_LEASH = 2
-    
-
-    def __init__(self, marine_tags : Units, medivac_tags : Units, targets : List[Point2], retreat_point : Point2, bot_object : BotAI, walk : bool = False):
+    def __init__(self, marine_tags : Set[int], medivac_tags : Set[int], targets : List[Point2], retreat_point : Point2, bot_object : BotAI, walk : bool = False):
         """
         :param marine_tags:
         :param medivac_tags:
@@ -36,31 +34,23 @@ class DropTactics:
         :param bot_object:
         :param walk:
         """
-        # assert all(not medivac.has_cargo for medivac in medivacs), "medivacs should be empty"
-        assert len(medivac_tags) > 0, "need to have at least 1 medivac"
-        assert len(marine_tags) == len(medivac_tags) * 8, f"need {len(medivac_tags) * 8} marines for {len(medivac_tags)} medivacs"
+        super().__init__(marine_tags, medivac_tags, bot_object)
 
-
-        # cannot store unit objects because their distance_calculation_index changes on each iteration
-        self._marine_tags : Set[int] = marine_tags
-        self._medivac_tags : Set[int] = medivac_tags
-        # self._target = target
-        self._targets : List[Point2] = targets + [bot_object.enemy_start_locations[0]]
+        self._targets : List[Point2] = targets
         self._current_target_i : int = 0
         self._retreat_point = retreat_point
-        self._bot_object = bot_object
         self._mode = 2 if walk else 0
         self._walk = walk
 
     @property
-    def marine_tags(self) -> Units:
-        """ Returns the tags of marines in this drop. """
-        return self._marine_tags
+    def targets(self) -> List[Point2]:
+        """ Returns the attack targets for this drop. """
+        return self._targets
 
     @property
-    def medivac_tags(self) -> Units:
-        """ Returns the tags of medivacs in this drop. """
-        return self._medivac_tags
+    def retreat_point(self) -> Point2:
+        """ Returns the retreat point for this drop. """
+        return self._retreat_point
 
     @property
     def mode(self) -> int:
@@ -74,9 +64,10 @@ class DropTactics:
         """
         return self._mode
 
-    async def handle(self, units_by_tag : Dict[int, Unit]):
+    async def handle(self, units_by_tag : Dict[int, Unit]) -> bool:
         """
         Controls the marines and medivacs in this drop, depending on the current mode.
+        Returns True if it needs to regroup, else False.
 
         :param units_by_tag:
         """
@@ -205,10 +196,16 @@ class DropTactics:
             # retreating
             cargo_medivacs = medivacs.filter(lambda m : m.has_cargo)
             for medivac in medivacs:
-                if medivac.distance_to(self._retreat_point) < 5:
+                if (
+                    medivac.distance_to(self._retreat_point) <= self.EXPANSION_RADIUS
+                    and (await self._bot_object.can_place(UnitTypeId.SUPPLYDEPOT, [medivac.position]))[0]
+                ):
                     if not cargo_medivacs:
-                        self._current_target_i = 0
-                        self._mode = 2 if self._walk else 0
+                        if len(self._medivac_tags) * 8 - len(self._marine_tags) >= 4:
+                            return True
+                        else:
+                            self._current_target_i = 0
+                            self._mode = 2 if self._walk else 0
                     else:
                         medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                         if medivac.is_moving:
@@ -227,3 +224,5 @@ class DropTactics:
                         medivac.move(self._retreat_point, queue = True)
                     else:
                         medivac.move(self._retreat_point)
+
+        return False
