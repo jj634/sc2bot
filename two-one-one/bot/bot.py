@@ -57,7 +57,7 @@ class TOOBot(sc2.BotAI):
     async def on_step(self, iteration):
         self.units_by_tag = {unit.tag : unit for unit in self.all_own_units}
 
-        print(list((str(point) +": "+ str(len(groups)) for point, groups in self.harass_assignments.items())))
+        print(list((str(point) +": "+ str(list(len(group.medivac_tags) for group in groups)) for point, groups in self.harass_assignments.items())))
 
         # above or below player_start_location, depending on spawn
         updown : Point2 = Point2((self.game_info.player_start_location.x, self.game_info.map_center.y))
@@ -361,7 +361,7 @@ class TOOBot(sc2.BotAI):
                 new_drop_tactics = DropTactics(
                     marine_tags=joiners[0].marine_tags,
                     medivac_tags=joiners[0].medivac_tags,
-                    targets=[group.targets],
+                    targets=group.targets,
                     retreat_point=group.retreat_point,
                     bot_object=self,
                     walk=False
@@ -372,7 +372,10 @@ class TOOBot(sc2.BotAI):
 
                 self.join_assignments[new_drop_tactics] = joiners[1:]
                 self.harass_groups.add(new_drop_tactics)
-                self.harass_assignments[new_drop_tactics.targets[0]].append(new_drop_tactics)
+
+                current_groups = self.harass_assignments.get(new_drop_tactics.targets[0]) or []
+                current_groups.append(new_drop_tactics)
+                self.harass_assignments[new_drop_tactics.targets[0]] = current_groups
             del self.join_assignments[group]
 
         # harass
