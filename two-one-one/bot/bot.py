@@ -367,7 +367,7 @@ class TOOBot(sc2.BotAI):
                     walk=False
                 )
                 
-                if len(joiners > 1):
+                if len(joiners) > 1:
                     joiners[1].assignment = new_drop_tactics
 
                 self.join_assignments[new_drop_tactics] = joiners[1:]

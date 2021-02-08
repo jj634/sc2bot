@@ -58,9 +58,13 @@ async def distribute_workers(bot_object : BotAI):
 
     deficit_geysers = filter(lambda m : m.has_vespene, deficit_mining_places)
     if deficit_geysers:
+        gas_worker_pool = worker_pool
         mineral_workers = bot_object.workers.filter(lambda w : w.order_target in bot_object.mineral_field.tags or w.is_carrying_minerals)
-        gas_worker_pool = worker_pool if worker_pool else mineral_workers
         for deficit_geyser in deficit_geysers:
+            if len(gas_worker_pool) == 0:
+                if mineral_workers.amount == 0:
+                    break
+                gas_worker_pool = mineral_workers
             best_worker = min(gas_worker_pool, key = lambda w : w.distance_to(deficit_geyser))
             gas_worker_pool.remove(best_worker)
             if best_worker in worker_pool:

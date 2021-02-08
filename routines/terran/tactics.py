@@ -63,7 +63,6 @@ class Tactics:
     def original_medivac_tags(self) -> FrozenSet[int]:
         return self._original_medivac_tags
 
-    @property
     def position(self, units_by_tag : Dict[int, Unit]) -> Point2:
         """ Returns the centroid of the medivacs in this group. """
         alive_medivac_tags = self._medivac_tags & units_by_tag.keys()
