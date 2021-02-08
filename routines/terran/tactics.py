@@ -9,7 +9,7 @@ sys.path.append(".") # Adds higher directory to python modules path.
 
 from utils.distances import centroid
 
-from typing import Dict, Set
+from typing import Dict, FrozenSet, Set
 
 
 class Tactics:
@@ -28,7 +28,7 @@ class Tactics:
         # cannot store unit objects because their distance_calculation_index changes on each iteration
         self._marine_tags : Set[int] = marine_tags
         self._medivac_tags : Set[int] = medivac_tags
-        self._original_medivac_tags = frozenset(medivac_tags)
+        self._original_medivac_tags : FrozenSet[int] = frozenset(medivac_tags)
         self._bot_object : BotAI = bot_object
         self._mode = 0
 
@@ -37,12 +37,12 @@ class Tactics:
 
     def __eq__(self, other):
         try:
-            return (self._medivac_tags == other.medivac_tags) and (self._marine_tags == other.marine_tags)
+            return self._original_medivac_tags == other.original_medivac_tags
         except:
             return False
 
     @property
-    def marine_tags(self) -> Units:
+    def marine_tags(self) -> Set[int]:
         """ Returns the tags of marines in this drop. """
         return self._marine_tags
 
@@ -51,13 +51,17 @@ class Tactics:
         self._marine_tags = new_marine_tags
 
     @property
-    def medivac_tags(self) -> Units:
+    def medivac_tags(self) -> Set[int]:
         """ Returns the tags of medivacs in this drop. """
         return self._medivac_tags
 
     @medivac_tags.setter
     def medivac_tags(self, new_medivac_tags):
         self._medivac_tags = new_medivac_tags
+
+    @property
+    def original_medivac_tags(self) -> FrozenSet[int]:
+        return self._original_medivac_tags
 
     @property
     def position(self, units_by_tag : Dict[int, Unit]) -> Point2:

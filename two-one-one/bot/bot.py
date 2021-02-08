@@ -335,36 +335,45 @@ class TOOBot(sc2.BotAI):
             unit.attack(chill_spot)
 
         # handle attack groups
+
+        needs_regroup_groups : Set[DropTactics] = set()
+        perished_groups : Set[DropTactics] = set()
         for group in self.harass_groups:
             needs_regroup = await group.handle(self.units_by_tag)
-            if group.perished(self.units_by_tag):
-                self.harass_groups.remove(group)
-                self.harass_assignments[group.targets[0]].remove(group)
-                if len(group.marine_tags) > 0:
-                    self.stranded_marine_tags |= group.marine_tags
-                joiners : List[JoinTactics] = self.join_assignments[group]
-                if joiners:
-                    new_drop_tactics = DropTactics(
-                        marine_tags=joiners[0].marine_tags,
-                        medivac_tags=joiners[0].medivac_tags,
-                        targets=[group.targets],
-                        retreat_point=group.retreat_point,
-                        bot_object=self,
-                        walk=False
-                    )
-                    
-                    if len(joiners > 1):
-                        joiners[1].assignment = new_drop_tactics
+            perished = group.perished(self.units_by_tag)
+            if needs_regroup:
+                needs_regroup_groups.add(group)
+            elif perished:
+                perished_groups.add(group)
 
-                    self.join_assignments[new_drop_tactics] = joiners[1:]
-                    self.harass_groups.add(new_drop_tactics)
-                    self.harass_assignments[new_drop_tactics.targets[0]].append(new_drop_tactics)
-                del self.join_assignments[group]
-            elif needs_regroup:
-                self.harass_assignments[group.targets[0]].remove(group)
-
+        for group in needs_regroup_groups | perished_groups:
+            if group in needs_regroup_groups:
                 self.waiting_marine_tags |= group.marine_tags
                 self.waiting_medivac_tags |= group.medivac_tags
+            elif group in perished_groups:
+                self.stranded_marine_tags |= group.marine_tags
+            
+            self.harass_groups.remove(group)
+            self.harass_assignments[group.targets[0]].remove(group)
+            
+            joiners : List[JoinTactics] = self.join_assignments[group]
+            if joiners:
+                new_drop_tactics = DropTactics(
+                    marine_tags=joiners[0].marine_tags,
+                    medivac_tags=joiners[0].medivac_tags,
+                    targets=[group.targets],
+                    retreat_point=group.retreat_point,
+                    bot_object=self,
+                    walk=False
+                )
+                
+                if len(joiners > 1):
+                    joiners[1].assignment = new_drop_tactics
+
+                self.join_assignments[new_drop_tactics] = joiners[1:]
+                self.harass_groups.add(new_drop_tactics)
+                self.harass_assignments[new_drop_tactics.targets[0]].append(new_drop_tactics)
+            del self.join_assignments[group]
 
         # harass
         if self.already_pending_upgrade(UpgradeId.STIMPACK) >= 0.9:
@@ -433,7 +442,7 @@ class TOOBot(sc2.BotAI):
         for main_drop, join_groups in self.join_assignments.items():
             for join_group_i in range(len(join_groups)):
                 join_group : JoinTactics = join_groups[join_group_i]
-                arrived = join_group.handle(self.units_by_tag)
+                arrived = await join_group.handle(self.units_by_tag)
                 if join_group.assignment.perished(self.units_by_tag):
                     assert type(join_group.assignment) == JoinTactics, "somehow a drop tactics slipped by"
                     next_assignment = join_group.assignment
