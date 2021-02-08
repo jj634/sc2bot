@@ -118,5 +118,7 @@ class JoinTactics(Tactics):
 
                         medivac.move(medivac.position.towards(Point2(safe_point), 3))
                         medivac.move(assignment_pos, queue = True)
+                    else:
+                        medivac.move(assignment_pos)
 
         return False
