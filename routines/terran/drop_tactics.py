@@ -7,13 +7,14 @@ from sc2.ids.ability_id import AbilityId
 from sc2.ids.buff_id import BuffId
 
 from typing import Dict, List, Set, Union
+from math import pi
 
 # TODO: figure out relative imports
 import sys
 sys.path.append(".") # Adds higher directory to python modules path.
 
 from .tactics import Tactics
-from utils.distances import centroid
+from utils.distances import centroid, angle, perpendicular_clockwise, perpendicular_counterclockwise
 from routines.terran.medivac_pickup import pickup_micro
 
 
@@ -107,7 +108,7 @@ class DropTactics(Tactics):
             # TODO: just retreat if too many enemy units at target location
             for medivac in medivacs:
                 target_proximity = medivac.distance_to(self._targets[self._current_target_i])
-                enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : medivac.distance_to(e) < 10)
+                enemies_in_range = self._bot_object.all_enemy_units.filter(lambda e : medivac.distance_to(e) < 10).sorted(lambda e : medivac.distance_to(e))
                 if target_proximity <= self.BOOST_RADIUS:
                     enemies_in_range_dps = sum(e.calculate_dps_vs_target(medivac) for e in enemies_in_range)
                     if enemies_in_range_dps * 3 > medivac.health:
@@ -129,10 +130,20 @@ class DropTactics(Tactics):
 
                     first_enemy = enemies_in_range.first.position
                     enemy_vector = (first_enemy.x - medivac.position.x, first_enemy.y - medivac.position.y)
-                    safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
+                    curr_target = self._targets[self._current_target_i]
+                    target_vector = (curr_target.x - medivac.position.x, curr_target.y - medivac.position.y)
+
+                    enemy_angle = angle(enemy_vector, target_vector)
+
+                    if (enemy_angle < pi / 3):
+                        perps = [perpendicular_clockwise(target_vector), perpendicular_counterclockwise(target_vector)]
+                        better_perp = max(perps, key = lambda v : angle(v, enemy_vector))
+                        safe_point = (medivac.position.x + better_perp[0], medivac.position.y + better_perp[1])
+                    else:
+                        safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
 
                     medivac.move(medivac.position.towards(Point2(safe_point), 3))
-                    medivac.move(self._targets[self._current_target_i], queue = True)
+                    medivac.move(curr_target, queue = True)
         if self._mode == 2:
             # attacking
             # TODO: add "wander" mechanics to find structures at edges of base

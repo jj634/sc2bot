@@ -410,7 +410,6 @@ class TOOBot(sc2.BotAI):
 
                 best_match : Tuple[Point2, int] = min(heuristic_scores.keys(), key = lambda t : heuristic_scores[t])
                 print(f"heuristic: {best_match[0]}, {best_match[1]}")
-                print(list(self.harass_assignments.keys()))
                 if best_match[0] in self.harass_assignments.keys() and best_match[1] < len(self.harass_assignments[best_match[0]]):
                     # there is an existing DropTactics. create a JoinTactics group
                     print("adding new join tactics")
