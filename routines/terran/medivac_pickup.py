@@ -69,20 +69,25 @@ async def pickup_micro(
     for medivac in medivacs:
         if medivac.has_cargo:
             # drop off at closest safe position
-            enemies_in_range = bot.enemy_units.filter(lambda e : e.target_in_range(medivac)).sorted(lambda e : medivac.distance_to(e))
-            if not enemies_in_range and (await bot.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]:
+            enemies_in_range = bot.enemy_units.filter(lambda e : e.ground_range >= e.distance_to(medivac)).sorted(lambda e : e.distance_to(medivac))
+            if (
+                not enemies_in_range
+                and ((await bot.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]
+                or (await bot.can_place(UnitTypeId.CREEPTUMOR, [medivac.position]))[0])
+            ):
                 # TODO: make sure location valid, and within expo radius
                 medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                 if medivac.is_moving:
                     medivac.hold_position()
-            else:
+            elif enemies_in_range:
                 # TODO: helper method to determine "direction" of battle
-                medivac.move(retreat_point)
                 first_enemy = enemies_in_range.first.position
                 enemy_vector = (first_enemy.x - medivac.position.x, first_enemy.y - medivac.position.y)
                 safe_point = (medivac.position.x - enemy_vector[0], medivac.position.y - enemy_vector[1])
 
                 medivac.move(medivac.position.towards(Point2(safe_point), 3))
+            else:
+                medivac.move(retreat_point)
         elif not (len(medivac.orders) > 0 and medivac.orders[0].ability.id == AbilityId.LOAD_MEDIVAC):
             next_endangered_marine = next(endangered_marines_iter, None)
             if next_endangered_marine:

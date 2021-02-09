@@ -114,7 +114,11 @@ class DropTactics(Tactics):
                     if enemies_in_range_dps * 3 > medivac.health:
                         self._mode = 4
                 
-                if target_proximity <= self.EXPANSION_RADIUS and (await self._bot_object.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]:
+                if (
+                    target_proximity <= self.EXPANSION_RADIUS
+                    and ((await self._bot_object.can_place(UnitTypeId.SENSORTOWER, [medivac.position]))[0]
+                    or (await self._bot_object.can_place(UnitTypeId.CREEPTUMOR, [medivac.position]))[0])
+                ):
                     medivac(AbilityId.UNLOADALLAT_MEDIVAC, medivac)
                     medivac.hold_position()
                     self._mode = 2
