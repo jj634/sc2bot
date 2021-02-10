@@ -59,6 +59,159 @@ class TOOBot(sc2.BotAI):
 
         print(list((str(point) +": "+ str(list(len(group.medivac_tags) for group in groups)) for point, groups in self.harass_assignments.items())))
 
+        await self.macro()
+
+        # endgame condition
+        if not self.townhalls.ready:
+            if not self.units:
+                await self.chat_send("(pineapple)")
+            target : Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
+            for unit in self.units():
+                unit.attack(target)
+            return
+
+        # handle waiting marines and medivacs
+        self.waiting_marine_tags = self.waiting_marine_tags & self.units_by_tag.keys()
+        self.waiting_medivac_tags = self.waiting_medivac_tags & self.units_by_tag.keys()
+
+        waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_marine_tags}, self)
+        waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_medivac_tags}, self)
+
+        chill_spot = self.own_expansions[self.townhalls.amount > 0].towards(self.game_info.map_center, 7)
+        for unit in (waiting_marines + waiting_medivacs).filter(lambda u : u.distance_to(chill_spot) > 5):
+            unit.attack(chill_spot)
+
+        # handle attack groups
+        needs_regroup_groups : Set[DropTactics] = set()
+        perished_groups : Set[DropTactics] = set()
+        for group in self.harass_groups:
+            needs_regroup = await group.handle(self.units_by_tag)
+            perished = group.perished(self.units_by_tag)
+            if needs_regroup:
+                needs_regroup_groups.add(group)
+            elif perished:
+                perished_groups.add(group)
+
+        # handle wounded attack groups
+        for group in needs_regroup_groups | perished_groups:
+            if group in needs_regroup_groups:
+                self.waiting_marine_tags |= group.marine_tags
+                self.waiting_medivac_tags |= group.medivac_tags
+            elif group in perished_groups:
+                self.stranded_marine_tags |= group.marine_tags
+            
+            self.harass_groups.remove(group)
+            self.harass_assignments[group.targets[0]].remove(group)
+            
+            joiners : List[JoinTactics] = self.join_assignments[group]
+            if joiners:
+                new_drop_tactics = DropTactics(
+                    marine_tags=joiners[0].marine_tags,
+                    medivac_tags=joiners[0].medivac_tags,
+                    targets=group.targets,
+                    retreat_point=group.retreat_point,
+                    bot_object=self,
+                    walk=False
+                )
+                
+                if len(joiners) > 1:
+                    joiners[1].assignment = new_drop_tactics
+
+                self.join_assignments[new_drop_tactics] = joiners[1:]
+                self.harass_groups.add(new_drop_tactics)
+
+                current_groups = self.harass_assignments.get(new_drop_tactics.targets[0]) or []
+                current_groups.append(new_drop_tactics)
+                self.harass_assignments[new_drop_tactics.targets[0]] = current_groups
+            del self.join_assignments[group]
+
+        # assign drop and join groups
+        if self.already_pending_upgrade(UpgradeId.STIMPACK) >= 0.9:
+            while (
+                len(self.waiting_marine_tags) >= 8
+                and len(self.waiting_medivac_tags) >= 1
+            ):
+                print("new group!")
+                new_harass_marine_tags = set(itertools.islice(self.waiting_marine_tags, 8))
+                new_harass_medivac_tags = set(itertools.islice(self.waiting_medivac_tags, 1))
+
+                self.waiting_marine_tags.difference_update(new_harass_marine_tags)
+                self.waiting_medivac_tags.difference_update(new_harass_medivac_tags)
+
+                heuristic_scores : Dict[Tuple[Point2, int], int] = dict()
+                for enemy_base_i in range(self.enemy_size):
+                    enemy_base = self.enemy_expansions[enemy_base_i]
+                    for harass_i in range(self.HARASS_SIZE):
+                        index = enemy_base_i + self.enemy_size * harass_i
+
+                        enemy_base_squads = self.harass_assignments.get(enemy_base) or []
+                        squad_size = 0
+                        if harass_i < len(enemy_base_squads):
+                            current_squad = enemy_base_squads[harass_i]
+                            squad_size += len(current_squad.medivac_tags)
+                            joiners = self.join_assignments[current_squad]
+                            if joiners:
+                                squad_size += sum(len(joiner.medivac_tags) for joiner in joiners)
+
+                        heuristic_scores[(enemy_base, harass_i)] = index + squad_size * 1000
+
+                best_match : Tuple[Point2, int] = min(heuristic_scores.keys(), key = lambda t : heuristic_scores[t])
+                print(f"heuristic: {best_match[0]}, {best_match[1]}")
+                if best_match[0] in self.harass_assignments.keys() and best_match[1] < len(self.harass_assignments[best_match[0]]):
+                    # there is an existing DropTactics. create a JoinTactics group
+                    print("adding new join tactics")
+                    existing_drop_tactic = self.harass_assignments[best_match[0]][best_match[1]]
+                    existing_join_tactics = self.join_assignments[existing_drop_tactic]
+                    next_assignment = existing_join_tactics[len(existing_join_tactics) - 1] if existing_join_tactics else existing_drop_tactic
+                    new_join_tactics = JoinTactics(
+                        marine_tags=new_harass_marine_tags,
+                        medivac_tags=new_harass_medivac_tags,
+                        bot_object=self,
+                        assignment=next_assignment
+                    )
+
+                    self.join_assignments[existing_drop_tactic].append(new_join_tactics)
+                else:
+                    # there is not an existing DropTactics. create a new DropTactics group
+                    print("adding new drop tactics")
+                    new_drop_tactics = DropTactics(
+                        marine_tags=new_harass_marine_tags,
+                        medivac_tags=new_harass_medivac_tags,
+                        targets=[best_match[0], self.enemy_start_locations[0]],
+                        retreat_point=self.own_expansions[self.townhalls.amount > 0],
+                        bot_object=self,
+                        walk=False
+                    )
+                    current_groups = self.harass_assignments.get(best_match[0]) or []
+                    current_groups.append(new_drop_tactics)
+                    self.harass_assignments[best_match[0]] = current_groups
+                    self.harass_groups.add(new_drop_tactics)
+                    self.join_assignments[new_drop_tactics] = []
+
+        # handle join groups
+        for main_drop, join_groups in self.join_assignments.items():
+            for join_group_i in range(len(join_groups)):
+                join_group : JoinTactics = join_groups[join_group_i]
+                arrived = await join_group.handle(self.units_by_tag)
+                if join_group.assignment.perished(self.units_by_tag):
+                    assert type(join_group.assignment) == JoinTactics, "somehow a drop tactics slipped by"
+                    next_assignment = join_group.assignment
+                    while next_assignment.perished(self.units_by_tag):
+                        join_groups.remove(next_assignment)
+                        next_assignment = next_assignment.assignment
+                    join_group.assignment = next_assignment
+                elif arrived:
+                    join_group.assignment.marine_tags = join_group.assignment.marine_tags | join_group.marine_tags
+                    join_group.assignment.medivac_tags = join_group.assignment.medivac_tags | join_group.medivac_tags
+
+                    if join_group_i + 1 < len(join_groups):
+                        arrived_joiner = join_groups[join_group_i + 1]
+                        arrived_joiner.assignment = join_group.assignment
+
+                    self.join_assignments[main_drop].remove(join_group)
+
+
+    async def macro(self):
         # above or below player_start_location, depending on spawn
         updown : Point2 = Point2((self.game_info.player_start_location.x, self.game_info.map_center.y))
         # to the left or right of player_start_location, depending on spawn
@@ -87,15 +240,6 @@ class TOOBot(sc2.BotAI):
         solo_barracks = self.structures(UnitTypeId.BARRACKS).ready.filter(lambda b : not b.has_add_on)
 
         await self.train_workers_until(19)
-        # TODO: make sure that the build doesn't continue in the middle later on in the game
-
-        if not self.townhalls.ready:
-            if not self.units:
-                await self.chat_send("(pineapple)")
-            target : Point2 = self.enemy_structures.random_or(self.enemy_start_locations[0]).position
-            for unit in self.units():
-                unit.attack(target)
-            return
 
 
 # rax, refinery, orbital, reactor, expo, depot, second rax, ebay, factory, second gas, planetary, tech lab, stim, depot, starport, factory reactor, another 2 depots right after previous one, switch star/fac, double medi
@@ -323,146 +467,6 @@ class TOOBot(sc2.BotAI):
         ):
             solo_barracks.first.build(UnitTypeId.BARRACKSREACTOR)
 
-        # handle waiting marines and medivacs
-        self.waiting_marine_tags = self.waiting_marine_tags & self.units_by_tag.keys()
-        self.waiting_medivac_tags = self.waiting_medivac_tags & self.units_by_tag.keys()
-
-        waiting_marines : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_marine_tags}, self)
-        waiting_medivacs : Units = Units({self.units_by_tag[m_tag] for m_tag in self.waiting_medivac_tags}, self)
-
-        chill_spot = self.own_expansions[self.townhalls.amount > 0].towards(self.game_info.map_center, 7)
-        for unit in (waiting_marines + waiting_medivacs).filter(lambda u : u.distance_to(chill_spot) > 5):
-            unit.attack(chill_spot)
-
-        # handle attack groups
-
-        needs_regroup_groups : Set[DropTactics] = set()
-        perished_groups : Set[DropTactics] = set()
-        for group in self.harass_groups:
-            needs_regroup = await group.handle(self.units_by_tag)
-            perished = group.perished(self.units_by_tag)
-            if needs_regroup:
-                needs_regroup_groups.add(group)
-            elif perished:
-                perished_groups.add(group)
-
-        for group in needs_regroup_groups | perished_groups:
-            if group in needs_regroup_groups:
-                self.waiting_marine_tags |= group.marine_tags
-                self.waiting_medivac_tags |= group.medivac_tags
-            elif group in perished_groups:
-                self.stranded_marine_tags |= group.marine_tags
-            
-            self.harass_groups.remove(group)
-            self.harass_assignments[group.targets[0]].remove(group)
-            
-            joiners : List[JoinTactics] = self.join_assignments[group]
-            if joiners:
-                new_drop_tactics = DropTactics(
-                    marine_tags=joiners[0].marine_tags,
-                    medivac_tags=joiners[0].medivac_tags,
-                    targets=group.targets,
-                    retreat_point=group.retreat_point,
-                    bot_object=self,
-                    walk=False
-                )
-                
-                if len(joiners) > 1:
-                    joiners[1].assignment = new_drop_tactics
-
-                self.join_assignments[new_drop_tactics] = joiners[1:]
-                self.harass_groups.add(new_drop_tactics)
-
-                current_groups = self.harass_assignments.get(new_drop_tactics.targets[0]) or []
-                current_groups.append(new_drop_tactics)
-                self.harass_assignments[new_drop_tactics.targets[0]] = current_groups
-            del self.join_assignments[group]
-
-        # harass
-        if self.already_pending_upgrade(UpgradeId.STIMPACK) >= 0.9:
-            while (
-                len(self.waiting_marine_tags) >= 8
-                and len(self.waiting_medivac_tags) >= 1
-            ):
-                print("new group!")
-                new_harass_marine_tags = set(itertools.islice(self.waiting_marine_tags, 8))
-                new_harass_medivac_tags = set(itertools.islice(self.waiting_medivac_tags, 1))
-
-                self.waiting_marine_tags.difference_update(new_harass_marine_tags)
-                self.waiting_medivac_tags.difference_update(new_harass_medivac_tags)
-
-                heuristic_scores : Dict[Tuple[Point2, int], int] = dict()
-                for enemy_base_i in range(self.enemy_size):
-                    enemy_base = self.enemy_expansions[enemy_base_i]
-                    for harass_i in range(self.HARASS_SIZE):
-                        index = enemy_base_i + self.enemy_size * harass_i
-
-                        enemy_base_squads = self.harass_assignments.get(enemy_base) or []
-                        squad_size = 0
-                        if harass_i < len(enemy_base_squads):
-                            current_squad = enemy_base_squads[harass_i]
-                            squad_size += len(current_squad.medivac_tags)
-                            joiners = self.join_assignments[current_squad]
-                            if joiners:
-                                squad_size += sum(len(joiner.medivac_tags) for joiner in joiners)
-
-                        heuristic_scores[(enemy_base, harass_i)] = index + squad_size * 1000
-
-                best_match : Tuple[Point2, int] = min(heuristic_scores.keys(), key = lambda t : heuristic_scores[t])
-                print(f"heuristic: {best_match[0]}, {best_match[1]}")
-                if best_match[0] in self.harass_assignments.keys() and best_match[1] < len(self.harass_assignments[best_match[0]]):
-                    # there is an existing DropTactics. create a JoinTactics group
-                    print("adding new join tactics")
-                    existing_drop_tactic = self.harass_assignments[best_match[0]][best_match[1]]
-                    existing_join_tactics = self.join_assignments[existing_drop_tactic]
-                    next_assignment = existing_join_tactics[len(existing_join_tactics) - 1] if existing_join_tactics else existing_drop_tactic
-                    new_join_tactics = JoinTactics(
-                        marine_tags=new_harass_marine_tags,
-                        medivac_tags=new_harass_medivac_tags,
-                        bot_object=self,
-                        assignment=next_assignment
-                    )
-
-                    self.join_assignments[existing_drop_tactic].append(new_join_tactics)
-                else:
-                    # there is not an existing DropTactics. create a new DropTactics group
-                    print("adding new drop tactics")
-                    new_drop_tactics = DropTactics(
-                        marine_tags=new_harass_marine_tags,
-                        medivac_tags=new_harass_medivac_tags,
-                        targets=[best_match[0], self.enemy_start_locations[0]],
-                        retreat_point=self.own_expansions[self.townhalls.amount > 0],
-                        bot_object=self,
-                        walk=False
-                    )
-                    current_groups = self.harass_assignments.get(best_match[0]) or []
-                    current_groups.append(new_drop_tactics)
-                    self.harass_assignments[best_match[0]] = current_groups
-                    self.harass_groups.add(new_drop_tactics)
-                    self.join_assignments[new_drop_tactics] = []
-
-        for main_drop, join_groups in self.join_assignments.items():
-            for join_group_i in range(len(join_groups)):
-                join_group : JoinTactics = join_groups[join_group_i]
-                arrived = await join_group.handle(self.units_by_tag)
-                if join_group.assignment.perished(self.units_by_tag):
-                    assert type(join_group.assignment) == JoinTactics, "somehow a drop tactics slipped by"
-                    next_assignment = join_group.assignment
-                    while next_assignment.perished(self.units_by_tag):
-                        join_groups.remove(next_assignment)
-                        next_assignment = next_assignment.assignment
-                    join_group.assignment = next_assignment
-                elif arrived:
-                    join_group.assignment.marine_tags = join_group.assignment.marine_tags | join_group.marine_tags
-                    join_group.assignment.medivac_tags = join_group.assignment.medivac_tags | join_group.medivac_tags
-
-                    if join_group_i + 1 < len(join_groups):
-                        arrived_joiner = join_groups[join_group_i + 1]
-                        arrived_joiner.assignment = join_group.assignment
-
-                    self.join_assignments[main_drop].remove(join_group)
-
-
         # drop mules
         for oc in self.townhalls(UnitTypeId.ORBITALCOMMAND).filter(lambda x: x.energy >= 50):
             # TODO: include mineral fields close to any cc
@@ -472,7 +476,6 @@ class TOOBot(sc2.BotAI):
                 oc(AbilityId.CALLDOWNMULE_CALLDOWNMULE, mf)
 
         await distribute_workers(self)
-
         await self.train_workers()
 
     async def train_workers(self):
